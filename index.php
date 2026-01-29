@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SG Timer - Odczyt sesji strzeleckiej</title>
+    <title>Odczyt sesji strzeleckiej</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='45' fill='%230f3d3e'/><circle cx='50' cy='50' r='3' fill='white'/><circle cx='50' cy='50' r='35' fill='none' stroke='white' stroke-width='2'/><line x1='50' y1='15' x2='50' y2='25' stroke='white' stroke-width='3'/><line x1='50' y1='50' x2='50' y2='25' stroke='white' stroke-width='2'/><line x1='50' y1='50' x2='70' y2='50' stroke='white' stroke-width='2'/></svg>">
     <style>
         :root {
