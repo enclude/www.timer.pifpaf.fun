@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SG Timer - Odczyt sesji strzeleckiej</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='45' fill='%230f3d3e'/><circle cx='50' cy='50' r='3' fill='white'/><circle cx='50' cy='50' r='35' fill='none' stroke='white' stroke-width='2'/><line x1='50' y1='15' x2='50' y2='25' stroke='white' stroke-width='3'/><line x1='50' y1='50' x2='50' y2='25' stroke='white' stroke-width='2'/><line x1='50' y1='50' x2='70' y2='50' stroke='white' stroke-width='2'/></svg>">
     <style>
         :root {
             --primary: #0f3d3e;
@@ -569,7 +570,8 @@
 
     <footer>
         <p>SG Timer Monitor &copy; <?php echo date('Y'); ?> |
-        <a href="https://pifpaf.fun" target="_blank">pifpaf.fun</a></p>
+        <a href="https://pifpaf.fun" target="_blank">pifpaf.fun</a> |
+        <a href="https://github.com/enclude/www.timer.pifpaf.fun" target="_blank">GitHub</a></p>
         <p style="margin-top: 5px; font-size: 0.8rem;">
             Kompatybilny z SG Timer Sport i SG Timer GO (BLE API 3.2)
         </p>
