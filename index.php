@@ -676,7 +676,7 @@
     // Format time in seconds to display format
     function formatTime(ms) {
         const seconds = ms / 1000;
-        return seconds.toFixed(3);
+        return seconds.toFixed(2);
     }
 
     // Format Unix timestamp to date
