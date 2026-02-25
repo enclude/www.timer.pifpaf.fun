@@ -39,6 +39,14 @@ Prefix nazwy urządzenia: `SG-SST4`
 | Unix Time       | 75200006-…  | Czas urządzenia |
 | API Version     | 7520fffe-…  | Wersja API |
 
+## Znane zachowania BLE API (na podstawie testów i screenshotów z 2026-02-25)
+
+- Urządzenie (`SG-SST4B00000`, API 3.2) wysyła `shotNum` w zdarzeniu `SHOT_DETECTED` **od 0** (0-indexed)
+- Wyświetlanie zawsze wymaga `shotNum + 1` — zarówno w live shots, jak i w tabeli sesji
+- Warunek braku splitu dla pierwszego strzału: `shotNum === 0` (nie `=== 1`)
+- Sesja wysyła łączną liczbę strzałów w `SESSION_STOPPED` — wartość zgodna z rzeczywistością
+- Zapisane sesje: ID sesji = Unix timestamp; nieprawidłowe ID (`0xFFFFFFFF` = sentinel, `-1` = błąd parsowania 32-bit jako signed)
+
 ## Konwencje
 
 - Język interfejsu: **polski**

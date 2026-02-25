@@ -914,19 +914,19 @@
             ? shotTime - currentSession.lastShotTime
             : shotTime;
 
-        currentSession.shots.push({ num: shotNum, time: shotTime, split: split });
+        currentSession.shots.push({ num: shotNum + 1, time: shotTime, split: split });
         currentSession.lastShotTime = shotTime;
 
         // Update live display
         elements.currentTime.textContent = formatTime(shotTime);
-        elements.shotCount.textContent = `Strzaly: ${shotNum}`;
+        elements.shotCount.textContent = `Strzaly: ${shotNum + 1}`;
 
         // Add to live shots table
         const row = document.createElement('tr');
         row.innerHTML = `
-            <td class="shot-num">${shotNum}</td>
+            <td class="shot-num">${shotNum + 1}</td>
             <td class="shot-time">${formatTime(shotTime)}s</td>
-            <td class="split-time">${shotNum === 1 ? '-' : '+' + formatTime(split) + 's'}</td>
+            <td class="split-time">${shotNum === 0 ? '-' : '+' + formatTime(split) + 's'}</td>
         `;
         elements.liveShotsBody.insertBefore(row, elements.liveShotsBody.firstChild);
 
