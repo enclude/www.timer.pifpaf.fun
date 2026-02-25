@@ -586,6 +586,20 @@
         <p style="margin-top: 5px; font-size: 0.8rem;">
             Kompatybilny z SG Timer Sport i SG Timer GO (BLE API 3.2)
         </p>
+        <?php
+        if (file_exists(__DIR__ . '/version.php')) {
+            include_once __DIR__ . '/version.php';
+            if (defined('APP_COMMIT_HASH') && APP_COMMIT_HASH !== 'dev') {
+                $date = APP_COMMIT_DATE
+                    ? date('d.m.Y', strtotime(APP_COMMIT_DATE))
+                    : '';
+                echo '<p style="margin-top: 4px; font-size: 0.75rem; opacity: 0.6;">';
+                echo 'wersja: <a href="' . APP_COMMIT_URL . '" target="_blank" style="color:inherit;">' . APP_COMMIT_HASH . '</a>';
+                if ($date) echo ' &middot; ' . $date;
+                echo '</p>';
+            }
+        }
+        ?>
     </footer>
 
     <script>
