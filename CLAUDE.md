@@ -10,15 +10,18 @@ GitHub: [github.com/enclude/www.timer.pifpaf.fun](https://github.com/enclude/www
 ## Struktura plików
 
 ```
-index.php       # Główny i jedyny plik aplikacji (HTML + CSS + JS + PHP)
-readme.md       # Dokumentacja projektu (po polsku)
-docs/           # Dokumentacja techniczna (pusta)
+index.php                        # Główny plik aplikacji (HTML + CSS + JS + PHP)
+version.php                      # Generowany przez CI (hash + data commitu); placeholder: 'dev'
+readme.md                        # Dokumentacja projektu (po polsku)
+docs/sg_timer_public_bt_api.pdf  # Dokumentacja BLE API (hasłem chroniona)
+screenshots/20260225/            # Screenshoty z testów z 25.02.2026
+.github/workflows/version.yml    # GitHub Actions: generuje version.php przy każdym pushu na main
 ```
 
 ## Architektura
 
 Aplikacja to **single-file PHP/HTML/CSS/JS** — cała logika znajduje się w `index.php`:
-- **PHP** — tylko do wypisania bieżącego roku w stopce
+- **PHP** — rok w stopce + wczytanie `version.php` (hash commitu)
 - **HTML/CSS** — interfejs użytkownika
 - **JavaScript** — cała logika Bluetooth i obsługa UI
 
@@ -45,7 +48,9 @@ Prefix nazwy urządzenia: `SG-SST4`
 - Wyświetlanie zawsze wymaga `shotNum + 1` — zarówno w live shots, jak i w tabeli sesji
 - Warunek braku splitu dla pierwszego strzału: `shotNum === 0` (nie `=== 1`)
 - Sesja wysyła łączną liczbę strzałów w `SESSION_STOPPED` — wartość zgodna z rzeczywistością
-- Zapisane sesje: ID sesji = Unix timestamp; nieprawidłowe ID (`0xFFFFFFFF` = sentinel, `-1` = błąd parsowania 32-bit jako signed)
+- Zapisane sesje: ID sesji = Unix timestamp urządzenia (czas lokalny)
+- Sentinel końca listy sesji/strzałów = `0xFFFFFFFF` — `parseBigEndian` musi zwracać unsigned (`>>> 0`), inaczej porównanie `=== 0xFFFFFFFF` nigdy nie jest spełnione
+- `formatDate` używa `timeZone: 'UTC'` — urządzenie zapisuje czas lokalny jako timestamp (bez strefy), bez `UTC` przeglądarka dodaje kolejne +1h
 
 ## Konwencje
 

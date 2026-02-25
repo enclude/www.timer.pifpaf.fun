@@ -694,6 +694,7 @@
     }
 
     // Format Unix timestamp to date
+    // Device stores local time as Unix timestamp (no UTC offset) — use timeZone:'UTC' to avoid double offset
     function formatDate(timestamp) {
         const date = new Date(timestamp * 1000);
         return date.toLocaleString('pl-PL', {
@@ -702,17 +703,19 @@
             day: '2-digit',
             hour: '2-digit',
             minute: '2-digit',
-            second: '2-digit'
+            second: '2-digit',
+            timeZone: 'UTC'
         });
     }
 
-    // Parse Big Endian bytes to number
+    // Parse Big Endian bytes to number (unsigned 32-bit safe)
+    // >>> 0 converts JS signed 32-bit result back to unsigned — required for 0xFFFFFFFF sentinel detection
     function parseBigEndian(dataView, offset, bytes) {
         let value = 0;
         for (let i = 0; i < bytes; i++) {
             value = (value << 8) | dataView.getUint8(offset + i);
         }
-        return value;
+        return value >>> 0;
     }
 
     // Connect to device
