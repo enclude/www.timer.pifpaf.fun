@@ -491,6 +491,17 @@
                     </svg>
                     Stop
                 </button>
+                <button id="btnSendToCalc" class="btn btn-outline hidden">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="4" y="2" width="16" height="20" rx="2"/>
+                        <line x1="8" y1="7" x2="16" y2="7"/>
+                        <line x1="8" y1="11" x2="10" y2="11"/>
+                        <line x1="8" y1="15" x2="10" y2="15"/>
+                        <line x1="14" y1="11" x2="16" y2="11"/>
+                        <line x1="14" y1="15" x2="16" y2="15"/>
+                    </svg>
+                    Wyslij do kalkulatora
+                </button>
             </div>
         </div>
 
@@ -642,7 +653,8 @@
         shotsBody: document.getElementById('shotsBody'),
         noShots: document.getElementById('noShots'),
         liveShotsCard: document.getElementById('liveShotsCard'),
-        liveShotsBody: document.getElementById('liveShotsBody')
+        liveShotsBody: document.getElementById('liveShotsBody'),
+        btnSendToCalc: document.getElementById('btnSendToCalc')
     };
 
     // Check Web Bluetooth support
@@ -859,6 +871,7 @@
         elements.shotCount.textContent = 'Strzaly: 0';
         elements.btnStart.disabled = true;
         elements.btnStop.disabled = false;
+        elements.btnSendToCalc.classList.add('hidden');
         elements.liveShotsCard.classList.remove('hidden');
         elements.liveShotsBody.innerHTML = '';
 
@@ -900,6 +913,9 @@
         elements.sessionStatus.textContent = `Sesja zakonczona (${totalShots} strzalow)`;
         elements.btnStart.disabled = false;
         elements.btnStop.disabled = true;
+        if (totalShots > 0) {
+            elements.btnSendToCalc.classList.remove('hidden');
+        }
 
         console.log('Session stopped:', { sessId, totalShots });
     }
@@ -1079,12 +1095,36 @@
         }
     }
 
+    // Send session data to external calculator
+    function sendToCalculator() {
+        const shots = currentSession.shots;
+        if (shots.length === 0) return;
+
+        const lastShot = shots[shots.length - 1];
+        const liczbaStrzalow = shots.length;
+        const czasBazowy = formatTime(lastShot.time);
+
+        const opisParts = shots.map(shot => {
+            const splitStr = shot.num === 1 ? '' : ` (+${formatTime(shot.split)}s)`;
+            return `${shot.num}: ${formatTime(shot.time)}s${splitStr}`;
+        });
+        const opis = opisParts.join(' | ');
+
+        const params = new URLSearchParams({
+            liczba_strzalow: liczbaStrzalow,
+            czas_bazowy: czasBazowy,
+            opis: opis
+        });
+        window.open(`https://piro-kalkulator.pifpaf.fun/?${params.toString()}`, '_blank');
+    }
+
     // Event listeners
     elements.btnConnect.addEventListener('click', connect);
     elements.btnDisconnect.addEventListener('click', disconnect);
     elements.btnLoadSessions.addEventListener('click', loadSessions);
     elements.btnStart.addEventListener('click', () => sendCommand(CMD_SESSION_START));
     elements.btnStop.addEventListener('click', () => sendCommand(CMD_SESSION_STOP));
+    elements.btnSendToCalc.addEventListener('click', sendToCalculator);
 
     // Initialize
     checkBrowserSupport();
