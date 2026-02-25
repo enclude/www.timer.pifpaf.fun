@@ -72,6 +72,18 @@ Aplikacja jest kompatybilna z BLE API w wersji 3.2.
 | 0x04 | SHOT_DETECTED | Wykryto strzal |
 | 0x05 | SESSION_SET_BEGIN | Poczatek setu sesji |
 
+### Numerowanie strzalow
+
+Urzadzenie wysyla numer strzalu (`shotNum`) **od 0** (0-indexed). Aplikacja
+wyswietla strzaly od **1**, dodajac `+1` do kazdej wartosci. Pierwsze zdarzenie
+strzalu (`shotNum === 0`) wyswietlane jest bez splitu (`-`).
+
+### Testowane urzadzenia
+
+| Urzadzenie | Firmware |
+|------------|----------|
+| SG-SST4B00000 | BLE API 3.2 |
+
 ## Autor
 
 [pifpaf.fun](https://pifpaf.fun)
