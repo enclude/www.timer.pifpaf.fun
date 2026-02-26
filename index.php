@@ -616,7 +616,7 @@
     const BLE_CHAR_SESSION_LIST = '75200002-14d2-4cda-8b6b-697c554c9311';
     const BLE_CHAR_SHOT_LIST = '75200004-14d2-4cda-8b6b-697c554c9311';
     const BLE_CHAR_UNIX_TIME = '75200006-14d2-4cda-8b6b-697c554c9311';
-    const BLE_CHAR_PAR_SETUP = '75200003-14d2-4cda-8b6b-697c554c9311';
+    const BLE_CHAR_PAR_SETUP = '75200005-14d2-4cda-8b6b-697c554c9311';
     const BLE_CHAR_API_VERSION = '7520fffe-14d2-4cda-8b6b-697c554c9311';
 
     // Command IDs
@@ -754,8 +754,17 @@
             characteristics.sessionList = await service.getCharacteristic(BLE_CHAR_SESSION_LIST);
             characteristics.shotList = await service.getCharacteristic(BLE_CHAR_SHOT_LIST);
             characteristics.unixTime = await service.getCharacteristic(BLE_CHAR_UNIX_TIME);
-            characteristics.parSetup = await service.getCharacteristic(BLE_CHAR_PAR_SETUP);
             characteristics.apiVersion = await service.getCharacteristic(BLE_CHAR_API_VERSION);
+
+            // PAR_SETUP is optional — UUID may vary by firmware; disable button if not found
+            try {
+                characteristics.parSetup = await service.getCharacteristic(BLE_CHAR_PAR_SETUP);
+            } catch (e) {
+                console.warn('PAR_SETUP characteristic not found:', BLE_CHAR_PAR_SETUP);
+                characteristics.parSetup = null;
+                elements.btnStartPar.disabled = true;
+                elements.btnStartPar.title = 'PAR_SETUP niedostepny na tym urzadzeniu';
+            }
 
             // Subscribe to notifications
             await characteristics.command.startNotifications();
@@ -989,13 +998,18 @@
     // Start session with random delay 1.0–4.0s via PAR_SETUP (API 1.5)
     // start_delay=0xFFFF triggers random delay, time_limit=0 (unlimited), shot_limit=0 (unlimited)
     async function startWithRandomDelay() {
+        if (!characteristics.parSetup) {
+            alert('PAR_SETUP niedostepny — sprawdz konsole po poprawny UUID charakterystyki.');
+            return;
+        }
         try {
             const parData = new Uint8Array([0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00]);
+            console.log('Writing PAR_SETUP to UUID:', BLE_CHAR_PAR_SETUP, parData);
             await characteristics.parSetup.writeValue(parData);
             await sendCommand(CMD_SESSION_START);
         } catch (error) {
-            console.error('Error starting with random delay:', error);
-            alert('Blad startu z opoznieniem: ' + error.message);
+            console.error('PAR_SETUP write failed (UUID may be wrong):', BLE_CHAR_PAR_SETUP, error);
+            alert('Blad zapisu PAR_SETUP (' + BLE_CHAR_PAR_SETUP + '): ' + error.message + '\nSprawdz konsole — UUID moze byc nieprawidlowy.');
         }
     }
 
