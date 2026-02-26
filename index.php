@@ -474,7 +474,7 @@
         <div id="liveSection" class="hidden">
             <div class="live-display">
                 <div id="sessionStatus" class="session-status">Oczekiwanie na sesje...</div>
-                <div id="currentTime" class="current-time">0.000</div>
+                <div id="currentTime" class="current-time">0.00</div>
                 <div id="shotCount" class="shot-count">Strzaly: 0</div>
             </div>
 
@@ -902,7 +902,7 @@
         };
 
         elements.sessionStatus.textContent = `Sesja rozpoczeta (opoznienie: ${startDelay}s)`;
-        elements.currentTime.textContent = '0.000';
+        elements.currentTime.textContent = '0.00';
         elements.shotCount.textContent = 'Strzaly: 0';
         elements.btnStart.disabled = true;
         elements.btnStartPar.disabled = true;
