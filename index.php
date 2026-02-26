@@ -567,6 +567,20 @@
                 </svg>
                 <p>Brak strzalow w tej sesji</p>
             </div>
+
+            <div style="margin-top: 15px; text-align: right;">
+                <button id="btnSendHistoryToCalc" class="btn btn-outline hidden">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="4" y="2" width="16" height="20" rx="2"/>
+                        <line x1="8" y1="7" x2="16" y2="7"/>
+                        <line x1="8" y1="11" x2="10" y2="11"/>
+                        <line x1="8" y1="15" x2="10" y2="15"/>
+                        <line x1="14" y1="11" x2="16" y2="11"/>
+                        <line x1="14" y1="15" x2="16" y2="15"/>
+                    </svg>
+                    Wyslij do kalkulatora
+                </button>
+            </div>
         </div>
 
         <!-- Live Shots during session -->
@@ -644,6 +658,7 @@
         shots: [],
         lastShotTime: 0
     };
+    let historySession = { sessId: null, shots: [] };
 
     // DOM Elements
     const elements = {
@@ -676,7 +691,8 @@
         liveShotsCard: document.getElementById('liveShotsCard'),
         liveShotsBody: document.getElementById('liveShotsBody'),
         btnSendToCalc: document.getElementById('btnSendToCalc'),
-        btnStartPar: document.getElementById('btnStartPar')
+        btnStartPar: document.getElementById('btnStartPar'),
+        btnSendHistoryToCalc: document.getElementById('btnSendHistoryToCalc')
     };
 
     // Check Web Bluetooth support
@@ -1108,6 +1124,7 @@
         elements.shotsLoading.classList.remove('hidden');
         elements.shotsTable.classList.add('hidden');
         elements.noShots.classList.add('hidden');
+        elements.btnSendHistoryToCalc.classList.add('hidden');
         elements.shotsBody.innerHTML = '';
 
         try {
@@ -1144,6 +1161,10 @@
 
             elements.shotsTable.classList.remove('hidden');
 
+            // Store for calculator export
+            historySession = { sessId, shots };
+            elements.btnSendHistoryToCalc.classList.remove('hidden');
+
             // Calculate splits and display
             let prevTime = 0;
             shots.forEach((shot, index) => {
@@ -1164,6 +1185,33 @@
             elements.shotsLoading.classList.add('hidden');
             alert('Blad ladowania strzalow: ' + error.message);
         }
+    }
+
+    // Send historical session data to external calculator (includes session date in opis)
+    function sendHistoryToCalculator() {
+        const { sessId, shots } = historySession;
+        if (!shots || shots.length === 0) return;
+
+        const lastShot = shots[shots.length - 1];
+        const liczbaStrzalow = shots.length;
+        const czasBazowy = formatTime(lastShot.time);
+
+        const sessionDate = formatDate(sessId);
+        let prevTime = 0;
+        const opisParts = shots.map((shot, index) => {
+            const split = index === 0 ? shot.time : shot.time - prevTime;
+            prevTime = shot.time;
+            const splitStr = index === 0 ? '' : ` (+${formatTime(split)}s)`;
+            return `${shot.num}: ${formatTime(shot.time)}s${splitStr}`;
+        });
+        const opis = sessionDate + ' | ' + opisParts.join(' | ');
+
+        const params = new URLSearchParams({
+            liczba_strzalow: liczbaStrzalow,
+            czas_bazowy: czasBazowy,
+            opis: opis
+        });
+        window.open(`https://piro-kalkulator.pifpaf.fun/?${params.toString()}`, '_blank');
     }
 
     // Send session data to external calculator
@@ -1197,6 +1245,7 @@
     elements.btnStartPar.addEventListener('click', startWithRandomDelay);
     elements.btnStop.addEventListener('click', () => sendCommand(CMD_SESSION_STOP));
     elements.btnSendToCalc.addEventListener('click', sendToCalculator);
+    elements.btnSendHistoryToCalc.addEventListener('click', sendHistoryToCalculator);
 
     // Initialize
     checkBrowserSupport();
