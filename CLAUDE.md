@@ -38,6 +38,7 @@ Prefix nazwy urządzenia: `SG-SST4`
 | Command         | 75200000-…  | Komendy do urządzenia |
 | Event           | 75200001-…  | Zdarzenia z urządzenia |
 | Session List    | 75200002-…  | Lista sesji |
+| PAR Setup       | 75200003-…  | Konfiguracja PAR (start_delay, time_limit, shot_limit) — 3×2 bajty |
 | Shot List       | 75200004-…  | Lista strzałów |
 | Unix Time       | 75200006-…  | Czas urządzenia |
 | API Version     | 7520fffe-…  | Wersja API |
@@ -49,6 +50,7 @@ Prefix nazwy urządzenia: `SG-SST4`
 - Warunek braku splitu dla pierwszego strzału: `shotNum === 0` (nie `=== 1`)
 - Sesja wysyła łączną liczbę strzałów w `SESSION_STOPPED` — wartość zgodna z rzeczywistością
 - Zapisane sesje: ID sesji = Unix timestamp urządzenia (czas lokalny)
+- PAR_SETUP (`75200003-…`): 6 bajtów `[start_delay_hi, start_delay_lo, time_limit_hi, time_limit_lo, shot_limit_hi, shot_limit_lo]`, wartości w jednostkach 0.1s; `start_delay=0xFFFF` = losowe 1–4s; `time_limit=0` i `shot_limit=0` = bez limitu
 - Sentinel końca listy sesji/strzałów = `0xFFFFFFFF` — `parseBigEndian` musi zwracać unsigned (`>>> 0`), inaczej porównanie `=== 0xFFFFFFFF` nigdy nie jest spełnione
 - `formatDate` używa `timeZone: 'UTC'` — urządzenie zapisuje czas lokalny jako timestamp (bez strefy), bez `UTC` przeglądarka dodaje kolejne +1h
 

@@ -485,6 +485,12 @@
                     </svg>
                     Start
                 </button>
+                <button id="btnStartPar" class="btn btn-accent">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                        <polygon points="5 3 19 12 5 21 5 3"/>
+                    </svg>
+                    Start z opoznieniem
+                </button>
                 <button id="btnStop" class="btn btn-danger" disabled>
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                         <rect x="6" y="6" width="12" height="12"/>
@@ -610,6 +616,7 @@
     const BLE_CHAR_SESSION_LIST = '75200002-14d2-4cda-8b6b-697c554c9311';
     const BLE_CHAR_SHOT_LIST = '75200004-14d2-4cda-8b6b-697c554c9311';
     const BLE_CHAR_UNIX_TIME = '75200006-14d2-4cda-8b6b-697c554c9311';
+    const BLE_CHAR_PAR_SETUP = '75200003-14d2-4cda-8b6b-697c554c9311';
     const BLE_CHAR_API_VERSION = '7520fffe-14d2-4cda-8b6b-697c554c9311';
 
     // Command IDs
@@ -668,7 +675,8 @@
         noShots: document.getElementById('noShots'),
         liveShotsCard: document.getElementById('liveShotsCard'),
         liveShotsBody: document.getElementById('liveShotsBody'),
-        btnSendToCalc: document.getElementById('btnSendToCalc')
+        btnSendToCalc: document.getElementById('btnSendToCalc'),
+        btnStartPar: document.getElementById('btnStartPar')
     };
 
     // Check Web Bluetooth support
@@ -746,6 +754,7 @@
             characteristics.sessionList = await service.getCharacteristic(BLE_CHAR_SESSION_LIST);
             characteristics.shotList = await service.getCharacteristic(BLE_CHAR_SHOT_LIST);
             characteristics.unixTime = await service.getCharacteristic(BLE_CHAR_UNIX_TIME);
+            characteristics.parSetup = await service.getCharacteristic(BLE_CHAR_PAR_SETUP);
             characteristics.apiVersion = await service.getCharacteristic(BLE_CHAR_API_VERSION);
 
             // Subscribe to notifications
@@ -887,6 +896,7 @@
         elements.currentTime.textContent = '0.000';
         elements.shotCount.textContent = 'Strzaly: 0';
         elements.btnStart.disabled = true;
+        elements.btnStartPar.disabled = true;
         elements.btnStop.disabled = false;
         elements.btnSendToCalc.classList.add('hidden');
         elements.liveShotsCard.classList.remove('hidden');
@@ -903,6 +913,7 @@
         currentSession.active = false;
         elements.sessionStatus.textContent = `Sesja wstrzymana (${totalShots} strzalow)`;
         elements.btnStart.disabled = false;
+        elements.btnStartPar.disabled = false;
         elements.btnStop.disabled = true;
 
         console.log('Session suspended:', { sessId, totalShots });
@@ -916,6 +927,7 @@
         currentSession.active = true;
         elements.sessionStatus.textContent = 'Sesja wznowiona';
         elements.btnStart.disabled = true;
+        elements.btnStartPar.disabled = true;
         elements.btnStop.disabled = false;
 
         console.log('Session resumed:', { sessId, totalShots });
@@ -929,6 +941,7 @@
         currentSession.active = false;
         elements.sessionStatus.textContent = `Sesja zakonczona (${totalShots} strzalow)`;
         elements.btnStart.disabled = false;
+        elements.btnStartPar.disabled = false;
         elements.btnStop.disabled = true;
         if (totalShots > 0) {
             elements.btnSendToCalc.classList.remove('hidden');
@@ -971,6 +984,19 @@
         const sessId = parseBigEndian(value, 2, 4);
         elements.sessionStatus.textContent = 'Sesja aktywna - start!';
         console.log('Session set begin:', { sessId });
+    }
+
+    // Start session with random delay 1.0–4.0s via PAR_SETUP (API 1.5)
+    // start_delay=0xFFFF triggers random delay, time_limit=0 (unlimited), shot_limit=0 (unlimited)
+    async function startWithRandomDelay() {
+        try {
+            const parData = new Uint8Array([0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00]);
+            await characteristics.parSetup.writeValue(parData);
+            await sendCommand(CMD_SESSION_START);
+        } catch (error) {
+            console.error('Error starting with random delay:', error);
+            alert('Blad startu z opoznieniem: ' + error.message);
+        }
     }
 
     // Send command
@@ -1140,6 +1166,7 @@
     elements.btnDisconnect.addEventListener('click', disconnect);
     elements.btnLoadSessions.addEventListener('click', loadSessions);
     elements.btnStart.addEventListener('click', () => sendCommand(CMD_SESSION_START));
+    elements.btnStartPar.addEventListener('click', startWithRandomDelay);
     elements.btnStop.addEventListener('click', () => sendCommand(CMD_SESSION_STOP));
     elements.btnSendToCalc.addEventListener('click', sendToCalculator);
 
