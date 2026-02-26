@@ -21,7 +21,7 @@ jobs:
         run: |
           HASH=$(git rev-parse --short HEAD)
           FULL_HASH=$(git rev-parse HEAD)
-          DATE=$(git log -1 --format="%ci" | cut -d' ' -f1)
+          DATE=$(git log -1 --format="%ci" | cut -d' ' -f1,2)
           echo "<?php" > version.php
           echo "// Plik generowany automatycznie przez GitHub Actions — nie edytuj recznie" >> version.php
           echo "define('APP_COMMIT_HASH', '${HASH}');" >> version.php
