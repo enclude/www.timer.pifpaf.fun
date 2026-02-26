@@ -10,12 +10,14 @@ GitHub: [github.com/enclude/www.timer.pifpaf.fun](https://github.com/enclude/www
 ## Struktura plików
 
 ```
-index.php                        # Główny plik aplikacji (HTML + CSS + JS + PHP)
-version.php                      # Generowany przez CI (hash + data commitu); placeholder: 'dev'
-readme.md                        # Dokumentacja projektu (po polsku)
-docs/sg_timer_public_bt_api.pdf  # Dokumentacja BLE API (hasłem chroniona)
-screenshots/20260225/            # Screenshoty z testów z 25.02.2026
-.github/workflows/version.yml    # GitHub Actions: generuje version.php przy każdym pushu na main
+index.php                           # Główny plik aplikacji (HTML + CSS + JS + PHP)
+version.php                         # Generowany przez CI (hash + data commitu); placeholder: 'dev'
+readme.md                           # Dokumentacja projektu (po polsku)
+docs/sg_timer_public_bt_api-32.pdf  # Dokumentacja BLE API (hasłem chroniona)
+docs/sg_timer_public_bt_api-32.png/ # Strony PDF jako PNG (czytelne)
+screenshots/20260225/               # Screenshoty z testów z 25.02.2026
+screenshots/20260226/               # Screenshoty z testów z 26.02.2026
+.github/workflows/version.yml       # GitHub Actions: generuje version.php przy każdym pushu na main
 ```
 
 ## Architektura
@@ -44,16 +46,21 @@ Prefix nazwy urządzenia: `SG-SST4`
 | Unix Time       | 75200006-…  | Czas urządzenia (R, W) |
 | API Version     | 7520fffe-…  | Wersja API |
 
-## Znane zachowania BLE API (na podstawie testów i screenshotów z 2026-02-25)
+## Znane zachowania BLE API (potwierdzone testami i oficjalną dokumentacją)
 
-- Urządzenie (`SG-SST4B00000`, API 3.2) wysyła `shotNum` w zdarzeniu `SHOT_DETECTED` **od 0** (0-indexed)
+- Urządzenie (`SG-SST4B00000`, API 3.2) wysyła `shotNum` w zdarzeniu `SHOT_DETECTED` **od 0** (0-indexed, potwierdzone w docs)
 - Wyświetlanie zawsze wymaga `shotNum + 1` — zarówno w live shots, jak i w tabeli sesji
 - Warunek braku splitu dla pierwszego strzału: `shotNum === 0` (nie `=== 1`)
 - Sesja wysyła łączną liczbę strzałów w `SESSION_STOPPED` — wartość zgodna z rzeczywistością
 - Zapisane sesje: ID sesji = Unix timestamp urządzenia (czas lokalny)
-- PAR_SETUP (`75200005-…`): 6 bajtów `[start_delay_hi, start_delay_lo, time_limit_hi, time_limit_lo, shot_limit_hi, shot_limit_lo]`, wartości w jednostkach 0.1s; `start_delay=0xFFFF` = losowe 1–4s; `time_limit=0` i `shot_limit=0` = bez limitu
+- PAR_SETUP (`75200005-…`): 3×2 bajty `[start_delay(2), time_limit(2), shot_limit(2)]`, wartości w jednostkach 0.1s; `start_delay=0xFFFF` = losowe 1–4s; `start_delay=0x0000` = natychmiastowy start; `time_limit=0` i `shot_limit=0` = bez limitu
 - Sentinel końca listy sesji/strzałów = `0xFFFFFFFF` — `parseBigEndian` musi zwracać unsigned (`>>> 0`), inaczej porównanie `=== 0xFFFFFFFF` nigdy nie jest spełnione
 - `formatDate` używa `timeZone: 'UTC'` — urządzenie zapisuje czas lokalny jako timestamp (bez strefy), bez `UTC` przeglądarka dodaje kolejne +1h
+- `SESSION_SET_BEGIN` (0x05) — wysyłane gdy mija opóźnienie PAR i faktyczny pomiar się zaczyna
+- COMMAND (`75200000-…`) ma właściwość N (notify) — odpowiedzi na komendy wracają jako notyfikacja na tej samej charakterystyce
+- Pakiet SHOT_DETECTED: `[len(1), event_id(1), sess_id(4), shot_num(2), shot_time(4)]` — shot_num to **2 bajty**
+- SHOT_LIST read: `[shot_number(2), shot_time(4)]` — 6 bajtów łącznie; sentinel w polu shot_time
+- SAVED_SESSION_ID_LIST: zapis `0xFFFFFFFF` → start od najnowszej; odczyty od najnowszej do najstarszej
 
 ## Konwencje
 

@@ -9,9 +9,10 @@ Strona: [timer.pifpaf.fun](https://timer.pifpaf.fun) | GitHub: [enclude/www.time
 - **Polaczenie Bluetooth** - laczenie z timerem przez Web Bluetooth API
 - **Podglad na zywo** - biezacy czas i liczba strzalow w czasie rzeczywistym
 - **Sterowanie sesja** - Start / Stop sesji strzeleckiej
-- **Historia sesji** - przegladanie sesji zapisanych w urzadzeniu
+- **Start z opoznieniem** - Start PAR z losowym opoznieniem 1-4s (PAR_SETUP)
+- **Historia sesji** - przegladanie sesji zapisanych w urzadzeniu z liczba strzalow i czasem trwania
 - **Lista strzalow** - czasy i splity dla wybranej sesji
-- **Wyslij do kalkulatora** - przesyla dane serii do [piro-kalkulator.pifpaf.fun](https://piro-kalkulator.pifpaf.fun/) po zakonczeniu sesji
+- **Wyslij do kalkulatora** - przesyla dane serii do [piro-kalkulator.pifpaf.fun](https://piro-kalkulator.pifpaf.fun/) — dostepne zarowno po zakonczeniu biezacej sesji, jak i z poziomu historii
 - **Wersja w stopce** - hash commitu z linkiem do GitHub, generowany automatycznie przez CI
 
 ## Wymagania
@@ -35,9 +36,11 @@ Aplikacja jest kompatybilna z BLE API w wersji 3.2.
 1. Otworz aplikacje w kompatybilnej przegladarce
 2. Kliknij "Polacz z timerem" i wybierz urzadzenie (nazwa zaczyna sie od "SG-SST4")
 3. Po polaczeniu mozesz:
-   - Rozpoczac sesje przyciskiem "Start", zatrzymac "Stop"
+   - Rozpoczac sesje przyciskiem "Start" (natychmiastowy) lub "Start z opoznieniem" (losowe 1-4s)
+   - Zatrzymac sesje przyciskiem "Stop"
    - Po zakonczeniu sesji kliknac "Wyslij do kalkulatora"
-   - Przegladac zapisane sesje i ich strzaly
+   - Przegladac zapisane sesje — lista wyswietla liczbe strzalow i czas trwania
+   - Kliknac sesje historyczna, obejrzec strzaly i wyslac do kalkulatora (opis zawiera date sesji)
 
 ## Specyfikacja techniczna
 
@@ -47,14 +50,16 @@ Aplikacja jest kompatybilna z BLE API w wersji 3.2.
 ```
 
 ### Charakterystyki BLE
-| Charakterystyka | UUID | Opis |
-|-----------------|------|------|
-| Command | 75200000-... | Wysylanie komend do urzadzenia |
-| Event | 75200001-... | Odbieranie zdarzen z urzadzenia |
-| Session List | 75200002-... | Lista zapisanych sesji |
-| Shot List | 75200004-... | Lista strzalow w sesji |
-| Unix Time | 75200006-... | Czas urzadzenia (czas lokalny bez strefy) |
-| API Version | 7520fffe-... | Wersja API |
+| Charakterystyka | UUID | Wlasciwosci | Opis |
+|-----------------|------|-------------|------|
+| Command | 75200000-... | W, N | Wysylanie komend; odpowiedzi jako notyfikacje |
+| Event | 75200001-... | N | Odbieranie zdarzen z urzadzenia |
+| Session List | 75200002-... | R, W | Lista zapisanych sesji |
+| Reserved | 75200003-... | R | Zarezerwowany — nie zapisywac |
+| Shot List | 75200004-... | R, W | Lista strzalow w sesji |
+| PAR Setup | 75200005-... | R, W | Konfiguracja startu PAR (opoznienie, limit czasu, limit strzalow) |
+| Unix Time | 75200006-... | R, W | Czas urzadzenia (czas lokalny bez strefy) |
+| API Version | 7520fffe-... | R | Wersja API (ASCII) |
 
 ### Komendy
 | ID | Nazwa | Opis |
@@ -86,13 +91,29 @@ Wyswietlanie uzywa `timeZone: 'UTC'`, aby uniknac podwojnego dodania offsetu prz
 
 ### Integracja z kalkulatorem
 
-Po zakonczeniu sesji przycisk "Wyslij do kalkulatora" otwiera [piro-kalkulator.pifpaf.fun](https://piro-kalkulator.pifpaf.fun/) z parametrami GET:
+Przycisk "Wyslij do kalkulatora" otwiera [piro-kalkulator.pifpaf.fun](https://piro-kalkulator.pifpaf.fun/) z parametrami GET:
 
 | Parametr | Opis |
 |----------|------|
 | `liczba_strzalow` | Liczba strzalow w serii |
 | `czas_bazowy` | Czas ostatniego strzalu w sekundach (np. `15.80`) |
 | `opis` | Lista strzalow z czasami i splitami (URL-encoded) |
+
+Dostepny w dwoch trybach:
+- **Biezaca sesja** — pojawia sie po zakonczeniu sesji (SESSION_STOPPED), `opis` zawiera same strzaly
+- **Sesja historyczna** — pojawia sie pod lista strzalow wybranej sesji, `opis` zaczyna sie od daty i godziny sesji
+
+### PAR_SETUP
+
+Charakterystyka `75200005-…` (R, W), format: `[start_delay(2), time_limit(2), shot_limit(2)]`
+
+| Pole | Wartosc | Znaczenie |
+|------|---------|-----------|
+| `start_delay` | jednostki 0.1s | `0x0000` = natychmiastowy, `0xFFFF` = losowe 1.0–4.0s |
+| `time_limit` | jednostki 0.1s | `0x0000` = bez limitu czasu |
+| `shot_limit` | liczba strzalow | `0x0000` = bez limitu strzalow |
+
+Przycisk "Start" zapisuje `[0x00,0x00,0x00,0x00,0x00,0x00]` (zerowe opoznienie), przycisk "Start z opoznieniem" zapisuje `[0xFF,0xFF,0x00,0x00,0x00,0x00]` (losowe 1–4s). Po zapisie PAR_SETUP wymagane jest oddzielne wyslanie komendy SESSION_START.
 
 ### Wersjonowanie (CI/CD)
 
