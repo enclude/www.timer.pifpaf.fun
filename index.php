@@ -995,6 +995,20 @@
         console.log('Session set begin:', { sessId });
     }
 
+    // Start session immediately (zero delay) via PAR_SETUP (API 1.5)
+    // start_delay=0x0000 = immediate start, time_limit=0 (unlimited), shot_limit=0 (unlimited)
+    async function startNow() {
+        if (characteristics.parSetup) {
+            try {
+                const parData = new Uint8Array([0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+                await characteristics.parSetup.writeValue(parData);
+            } catch (error) {
+                console.warn('PAR_SETUP write failed, starting without reset:', error);
+            }
+        }
+        await sendCommand(CMD_SESSION_START);
+    }
+
     // Start session with random delay 1.0–4.0s via PAR_SETUP (API 1.5)
     // start_delay=0xFFFF triggers random delay, time_limit=0 (unlimited), shot_limit=0 (unlimited)
     async function startWithRandomDelay() {
@@ -1009,7 +1023,7 @@
             await sendCommand(CMD_SESSION_START);
         } catch (error) {
             console.error('PAR_SETUP write failed (UUID may be wrong):', BLE_CHAR_PAR_SETUP, error);
-            alert('Blad zapisu PAR_SETUP (' + BLE_CHAR_PAR_SETUP + '): ' + error.message + '\nSprawdz konsole — UUID moze byc nieprawidlowy.');
+            alert('Blad startu z opoznieniem: ' + error.message);
         }
     }
 
@@ -1179,7 +1193,7 @@
     elements.btnConnect.addEventListener('click', connect);
     elements.btnDisconnect.addEventListener('click', disconnect);
     elements.btnLoadSessions.addEventListener('click', loadSessions);
-    elements.btnStart.addEventListener('click', () => sendCommand(CMD_SESSION_START));
+    elements.btnStart.addEventListener('click', startNow);
     elements.btnStartPar.addEventListener('click', startWithRandomDelay);
     elements.btnStop.addEventListener('click', () => sendCommand(CMD_SESSION_STOP));
     elements.btnSendToCalc.addEventListener('click', sendToCalculator);
