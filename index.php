@@ -243,9 +243,10 @@
             font-weight: 600;
         }
 
-        .session-id {
+        .session-meta {
             font-size: 0.8rem;
             color: var(--text-secondary);
+            margin-top: 2px;
         }
 
         .shots-table {
@@ -659,6 +660,7 @@
         lastShotTime: 0
     };
     let historySession = { sessId: null, shots: [] };
+    let metadataAborted = false;
 
     // DOM Elements
     const elements = {
@@ -1093,10 +1095,11 @@
             sessions.forEach(sessId => {
                 const li = document.createElement('li');
                 li.className = 'session-item';
+                li.dataset.sessId = sessId;
                 li.innerHTML = `
                     <div>
                         <div class="session-date">${formatDate(sessId)}</div>
-                        <div class="session-id">ID: ${sessId}</div>
+                        <div class="session-meta">ładowanie...</div>
                     </div>
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <polyline points="9 18 15 12 9 6"/>
@@ -1106,6 +1109,10 @@
                 elements.sessionList.appendChild(li);
             });
 
+            // Load shot count and duration for each session in background
+            metadataAborted = false;
+            loadSessionsMetadata(sessions);
+
         } catch (error) {
             console.error('Error loading sessions:', error);
             elements.sessionsLoading.classList.add('hidden');
@@ -1113,8 +1120,55 @@
         }
     }
 
+    // Load shot count and duration for each session (runs in background)
+    async function loadSessionsMetadata(sessions) {
+        for (const sessId of sessions) {
+            if (metadataAborted) break;
+
+            try {
+                const sessIdBytes = new Uint8Array([
+                    (sessId >> 24) & 0xFF,
+                    (sessId >> 16) & 0xFF,
+                    (sessId >> 8) & 0xFF,
+                    sessId & 0xFF
+                ]);
+                await characteristics.shotList.writeValue(sessIdBytes);
+
+                let shotCount = 0;
+                let lastShotTime = 0;
+                let endReached = false;
+
+                while (!endReached && shotCount < 1000) {
+                    if (metadataAborted) break;
+                    const value = await characteristics.shotList.readValue();
+                    const shotTime = parseBigEndian(value, 2, 4);
+                    if (shotTime === 0xFFFFFFFF) {
+                        endReached = true;
+                    } else {
+                        shotCount++;
+                        lastShotTime = shotTime;
+                    }
+                }
+
+                if (!metadataAborted) {
+                    const li = elements.sessionList.querySelector(`[data-sess-id="${sessId}"]`);
+                    const metaEl = li ? li.querySelector('.session-meta') : null;
+                    if (metaEl) {
+                        metaEl.textContent = shotCount === 0
+                            ? 'Brak strzałów'
+                            : `${shotCount} strzałów · ${formatTime(lastShotTime)}s`;
+                    }
+                }
+            } catch (error) {
+                console.warn('Metadata load error for session', sessId, error);
+            }
+        }
+    }
+
     // Load shots for a session
     async function loadSessionShots(sessId, listItem) {
+        metadataAborted = true;
+
         // Update active state
         document.querySelectorAll('.session-item').forEach(item => item.classList.remove('active'));
         listItem.classList.add('active');
