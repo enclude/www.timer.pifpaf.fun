@@ -106,6 +106,28 @@ Stopka wyswietla hash commitu jako klikalny link do GitHub oraz date. Lokalnie
 |------------|----------|
 | SG-SST4B00000 | BLE API 3.2 |
 
+## Historia testow
+
+### 25.02.2026 — pierwsze testy, odkrycie bledow
+
+- Urządzenie: SG-SST4B00000, API 3.2
+- Sesje 8-strzalowe
+- Odkryte bledy:
+  - `shotNum` 0-indexed — strzaly wyswietlane od 0 zamiast od 1
+  - `parseBigEndian` zwracal -1 dla `0xFFFFFFFF` (signed 32-bit overflow) — sentinel nie byl wykrywany, lista sesji ladowala 100 pustych wpisow z ID -1 i data 01.01.1970
+  - `formatDate` bez `timeZone:'UTC'` — czas urzadzenia wyswietlany o 1h za duzo (CET podwojnie naliczany)
+
+### 26.02.2026 — testy po poprawkach
+
+- Sesja 30 strzalow, czas 38.20s
+- Czas urzadzenia: 26.02.2026, 10:40:42 (telefon: 10:41) — **zgodny po poprawce strefy**
+- Licznik i komunikat "Sesja zakonczona (30 strzalow)" / "Strzaly: 30" — **zgodne po poprawce numerowania**
+- Przycisk "Wyslij do kalkulatora" pojawil sie poprawnie po zakonczeniu sesji
+- Dane przekazane do [piro-kalkulator.pifpaf.fun](https://piro-kalkulator.pifpaf.fun/):
+  - `czas_bazowy=38.2`, `liczba_strzalow=30`
+  - `opis` z pelna lista 30 strzalow z czasami i splitami, np. `1: 16.05s | 2: 19.23s (+3.18s) | ...`
+- Kalkulator poprawnie wyswietlil wynik: czas koncowy 38.20s, 0 kar
+
 ## Autor
 
 [pifpaf.fun](https://pifpaf.fun)
