@@ -61,6 +61,7 @@ Prefix nazwy urządzenia: `SG-SST4`
 - Pakiet SHOT_DETECTED: `[len(1), event_id(1), sess_id(4), shot_num(2), shot_time(4)]` — shot_num to **2 bajty**
 - SHOT_LIST read: `[shot_number(2), shot_time(4)]` — 6 bajtów łącznie; sentinel w polu shot_time
 - SAVED_SESSION_ID_LIST: zapis `0xFFFFFFFF` → start od najnowszej; odczyty od najnowszej do najstarszej
+- Web Bluetooth dopuszcza **tylko jedną operację GATT naraz** na urządzenie — równoległe `readValue`/`writeValue` kończą się błędem `GATT operation failed for unknown reason`; wszystkie operacje GATT muszą iść przez kolejkę `gattExec()`, a sekwencje kursorowe (sessionList/shotList) nie mogą się przeplatać (`stopMetadataLoad()` + `shotsLoadToken`)
 
 ## Integracja z kalkulatorem PiRO
 

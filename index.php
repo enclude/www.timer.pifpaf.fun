@@ -708,6 +708,26 @@
     };
     let historySession = { sessId: null, shots: [] };
     let metadataAborted = false;
+    let metadataTask = Promise.resolve();
+    let shotsLoadToken = 0;
+
+    // Web Bluetooth allows only ONE outstanding GATT operation per device.
+    // Concurrent readValue/writeValue calls fail with "GATT operation failed
+    // for unknown reason", so every GATT operation goes through this queue.
+    let gattChain = Promise.resolve();
+    function gattExec(operation) {
+        const result = gattChain.then(operation, operation);
+        gattChain = result.then(() => {}, () => {});
+        return result;
+    }
+
+    // Stop the background metadata loader and WAIT until its in-flight
+    // GATT operation finishes, so a new session/shot read sequence
+    // does not interleave with it on the same characteristic cursor.
+    async function stopMetadataLoad() {
+        metadataAborted = true;
+        await metadataTask.catch(() => {});
+    }
 
     // DOM Elements
     const elements = {
@@ -916,13 +936,17 @@
         characteristics = {};
         currentSession = { id: null, active: false, shots: [], lastShotTime: 0 };
 
+        // Stop background loaders — characteristics are gone
+        metadataAborted = true;
+        shotsLoadToken++;
+
         console.log('Disconnected');
     }
 
     // Read API version
     async function readApiVersion() {
         try {
-            const value = await characteristics.apiVersion.readValue();
+            const value = await gattExec(() => characteristics.apiVersion.readValue());
             const decoder = new TextDecoder('utf-8');
             elements.apiVersion.textContent = decoder.decode(value);
         } catch (error) {
@@ -934,7 +958,7 @@
     // Read device time
     async function readDeviceTime() {
         try {
-            const value = await characteristics.unixTime.readValue();
+            const value = await gattExec(() => characteristics.unixTime.readValue());
             const timestamp = parseBigEndian(value, 0, 4);
             elements.deviceTime.textContent = formatDate(timestamp);
         } catch (error) {
@@ -1093,7 +1117,7 @@
         if (characteristics.parSetup) {
             try {
                 const parData = new Uint8Array([0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
-                await characteristics.parSetup.writeValue(parData);
+                await gattExec(() => characteristics.parSetup.writeValue(parData));
             } catch (error) {
                 console.warn('PAR_SETUP write failed, starting without reset:', error);
             }
@@ -1111,7 +1135,7 @@
         try {
             const parData = new Uint8Array([0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00]);
             console.log('Writing PAR_SETUP to UUID:', BLE_CHAR_PAR_SETUP, parData);
-            await characteristics.parSetup.writeValue(parData);
+            await gattExec(() => characteristics.parSetup.writeValue(parData));
             await sendCommand(CMD_SESSION_START);
         } catch (error) {
             console.error('PAR_SETUP write failed (UUID may be wrong):', BLE_CHAR_PAR_SETUP, error);
@@ -1123,7 +1147,7 @@
     async function sendCommand(cmdId) {
         try {
             const data = new Uint8Array([0x01, cmdId]);
-            await characteristics.command.writeValue(data);
+            await gattExec(() => characteristics.command.writeValue(data));
             console.log('Command sent:', cmdId);
         } catch (error) {
             console.error('Error sending command:', error);
@@ -1133,6 +1157,13 @@
 
     // Load saved sessions
     async function loadSessions() {
+        // Stop background metadata loading from a previous run before
+        // resetting the sessionList read cursor; supersede any running
+        // shot load — its list item is about to be removed
+        shotsLoadToken++;
+        await stopMetadataLoad();
+
+        elements.btnLoadSessions.disabled = true;
         elements.sessionsLoading.classList.remove('hidden');
         elements.sessionList.innerHTML = '';
         elements.noSessions.classList.add('hidden');
@@ -1143,12 +1174,12 @@
 
             // Write 0xFFFFFFFF to start from newest
             const startValue = new Uint8Array([0xFF, 0xFF, 0xFF, 0xFF]);
-            await characteristics.sessionList.writeValue(startValue);
+            await gattExec(() => characteristics.sessionList.writeValue(startValue));
 
             // Read sessions
             let endReached = false;
             while (!endReached && sessions.length < 100) {
-                const value = await characteristics.sessionList.readValue();
+                const value = await gattExec(() => characteristics.sessionList.readValue());
                 const sessId = parseBigEndian(value, 0, 4);
 
                 if (sessId === 0xFFFFFFFF) {
@@ -1185,12 +1216,14 @@
 
             // Load shot count and duration for each session in background
             metadataAborted = false;
-            loadSessionsMetadata(sessions);
+            metadataTask = loadSessionsMetadata(sessions);
 
         } catch (error) {
             console.error('Error loading sessions:', error);
             elements.sessionsLoading.classList.add('hidden');
             alert('Blad ladowania sesji: ' + error.message);
+        } finally {
+            elements.btnLoadSessions.disabled = false;
         }
     }
 
@@ -1206,7 +1239,7 @@
                     (sessId >> 8) & 0xFF,
                     sessId & 0xFF
                 ]);
-                await characteristics.shotList.writeValue(sessIdBytes);
+                await gattExec(() => characteristics.shotList.writeValue(sessIdBytes));
 
                 let shotCount = 0;
                 let lastShotTime = 0;
@@ -1214,7 +1247,7 @@
 
                 while (!endReached && shotCount < 1000) {
                     if (metadataAborted) break;
-                    const value = await characteristics.shotList.readValue();
+                    const value = await gattExec(() => characteristics.shotList.readValue());
                     const shotTime = parseBigEndian(value, 2, 4);
                     if (shotTime === 0xFFFFFFFF) {
                         endReached = true;
@@ -1241,7 +1274,11 @@
 
     // Load shots for a session
     async function loadSessionShots(sessId, listItem) {
-        metadataAborted = true;
+        // Supersede any previous shot load and stop the background
+        // metadata loader before resetting the shotList read cursor
+        const token = ++shotsLoadToken;
+        await stopMetadataLoad();
+        if (token !== shotsLoadToken) return;
 
         // Update active state
         document.querySelectorAll('.session-item').forEach(item => item.classList.remove('active'));
@@ -1263,13 +1300,15 @@
                 (sessId >> 8) & 0xFF,
                 sessId & 0xFF
             ]);
-            await characteristics.shotList.writeValue(sessIdBytes);
+            await gattExec(() => characteristics.shotList.writeValue(sessIdBytes));
 
             const shots = [];
             let endReached = false;
 
             while (!endReached && shots.length < 1000) {
-                const value = await characteristics.shotList.readValue();
+                // A newer shot load has reset the shotList cursor — abandon this one
+                if (token !== shotsLoadToken) return;
+                const value = await gattExec(() => characteristics.shotList.readValue());
                 const shotNum = parseBigEndian(value, 0, 2);
                 const shotTime = parseBigEndian(value, 2, 4);
 
@@ -1280,6 +1319,7 @@
                 }
             }
 
+            if (token !== shotsLoadToken) return;
             elements.shotsLoading.classList.add('hidden');
 
             if (shots.length === 0) {
