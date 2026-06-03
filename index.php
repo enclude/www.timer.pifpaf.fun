@@ -889,7 +889,7 @@
 
         elements.cacheCard.classList.remove('hidden');
         elements.cacheInfo.textContent =
-            `Pobrano: ${formatDate(cache.savedAt)} · sesji: ${cache.sessions.length}`;
+            `Zapisano: ${formatDate(cache.savedAt)} · sesji: ${cache.sessions.length}`;
 
         cache.sessions.forEach(session => {
             const { sessId, shots } = session;
@@ -936,6 +936,49 @@
                 renderShots(sessId, shots, session);
             });
             elements.cacheList.appendChild(li);
+        });
+    }
+
+    // Auto-save a finished live session into the cache — only when both
+    // stage name and participant are filled in "Dane do kalkulatora"
+    function saveLiveSessionToCache(sessId, shots) {
+        const nazwaToru = elements.inputNazwaToru.value.trim();
+        const uczestnik = elements.inputUczestnik.value.trim();
+        if (!nazwaToru || !uczestnik || !sessId || shots.length === 0) return false;
+
+        const cache = readSessionCache() || { savedAt: sessId, sessions: [] };
+        const entry = {
+            sessId,
+            shots: shots.map(s => ({ num: s.num, time: s.time })),
+            nazwaToru,
+            uczestnik
+        };
+        const idx = cache.sessions.findIndex(s => s.sessId === sessId);
+        if (idx >= 0) {
+            cache.sessions[idx] = entry;
+        } else {
+            cache.sessions.push(entry);
+            cache.sessions.sort((a, b) => b.sessId - a.sessId);
+        }
+        cache.savedAt = sessId;
+
+        if (!writeSessionCache(cache)) return false;
+        renderCacheCard();
+        return true;
+    }
+
+    // Carry per-session labels over from the existing cache (incl. auto-saved
+    // live sessions) so a re-download does not wipe them
+    function applyCachedLabels(sessions) {
+        const existing = readSessionCache();
+        if (!existing) return;
+        const byId = new Map(existing.sessions.map(s => [s.sessId, s]));
+        sessions.forEach(s => {
+            const old = byId.get(s.sessId);
+            if (old) {
+                if (old.nazwaToru) s.nazwaToru = old.nazwaToru;
+                if (old.uczestnik) s.uczestnik = old.uczestnik;
+            }
         });
     }
 
@@ -1270,6 +1313,11 @@
             elements.btnSendToCalc.classList.remove('hidden');
         }
 
+        // Auto-cache the finished session when tor + uczestnik are filled in
+        if (saveLiveSessionToCache(sessId, currentSession.shots)) {
+            elements.sessionStatus.textContent += ' · zapisano w cache';
+        }
+
         console.log('Session stopped:', { sessId, totalShots });
     }
 
@@ -1549,6 +1597,9 @@
 
                 sessions.push({ sessId, shots });
             }
+
+            // Re-download must not wipe labels assigned to existing entries
+            applyCachedLabels(sessions);
 
             if (writeSessionCache({ savedAt: deviceNow, sessions })) {
                 renderCacheCard();

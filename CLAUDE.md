@@ -80,6 +80,13 @@ Każdej sesji w cache można przypisać **tor i uczestnika** (ołówek przy pozy
 Przy eksporcie do kalkulatora etykiety sesji mają pierwszeństwo nad formularzem
 (per pole — `appendCalcDataParams(params, overrides)`; puste pole etykiety = fallback do formularza).
 
+**Auto-zapis sesji live:** po `SESSION_STOPPED` (`saveLiveSessionToCache()` w `handleSessionStopped`)
+sesja trafia do cache z etykietami, ale **tylko gdy oba pola** (tor i uczestnik) w "Dane do kalkulatora"
+są wypełnione i sesja ma strzały. Duplikaty po `sessId` są nadpisywane, lista sortowana od najnowszej,
+status pokazuje "· zapisano w cache". Ponowne "Pobierz sesje do cache" nie kasuje etykiet —
+`applyCachedLabels()` przenosi je ze starego cache po `sessId` przed zapisem.
+`cache.savedAt` = czas ostatniego zapisu (download lub auto-zapis), w UI jako "Zapisano:".
+
 ## Integracja z kalkulatorem PiRO
 
 Przyciski "Wyslij do kalkulatora" otwieraja `https://piro-kalkulator.pifpaf.fun/` z parametrami GET:
