@@ -137,6 +137,14 @@
             cursor: not-allowed;
         }
 
+        .btn-small {
+            display: flex;
+            width: fit-content;
+            padding: 6px 12px;
+            font-size: 0.85rem;
+            margin-top: 8px;
+        }
+
         .btn-group {
             display: flex;
             gap: 10px;
@@ -499,6 +507,7 @@
                 <div class="info-item">
                     <label>Czas urzadzenia</label>
                     <span id="deviceTime">-</span>
+                    <button id="btnSyncTime" class="btn btn-outline btn-small">Synchronizuj czas</button>
                 </div>
             </div>
         </div>
@@ -740,6 +749,7 @@
         deviceName: document.getElementById('deviceName'),
         apiVersion: document.getElementById('apiVersion'),
         deviceTime: document.getElementById('deviceTime'),
+        btnSyncTime: document.getElementById('btnSyncTime'),
         liveSection: document.getElementById('liveSection'),
         sessionStatus: document.getElementById('sessionStatus'),
         currentTime: document.getElementById('currentTime'),
@@ -964,6 +974,29 @@
         } catch (error) {
             console.error('Error reading device time:', error);
             elements.deviceTime.textContent = 'Blad odczytu';
+        }
+    }
+
+    // Sync device time with browser clock
+    // Device stores LOCAL time as Unix timestamp (no UTC offset) — write local epoch, not UTC
+    async function syncDeviceTime() {
+        elements.btnSyncTime.disabled = true;
+        try {
+            const localTimestamp = Math.floor(Date.now() / 1000) - new Date().getTimezoneOffset() * 60;
+            const timeBytes = new Uint8Array([
+                (localTimestamp >> 24) & 0xFF,
+                (localTimestamp >> 16) & 0xFF,
+                (localTimestamp >> 8) & 0xFF,
+                localTimestamp & 0xFF
+            ]);
+            await gattExec(() => characteristics.unixTime.writeValue(timeBytes));
+            console.log('Device time synced:', localTimestamp);
+            await readDeviceTime();
+        } catch (error) {
+            console.error('Error syncing device time:', error);
+            alert('Blad synchronizacji czasu: ' + error.message);
+        } finally {
+            elements.btnSyncTime.disabled = false;
         }
     }
 
@@ -1419,6 +1452,7 @@
     elements.btnConnect.addEventListener('click', connect);
     elements.btnDisconnect.addEventListener('click', disconnect);
     elements.btnLoadSessions.addEventListener('click', loadSessions);
+    elements.btnSyncTime.addEventListener('click', syncDeviceTime);
     elements.btnStart.addEventListener('click', startNow);
     elements.btnStartPar.addEventListener('click', startWithRandomDelay);
     elements.btnStop.addEventListener('click', () => sendCommand(CMD_SESSION_STOP));
