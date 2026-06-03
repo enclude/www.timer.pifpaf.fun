@@ -572,17 +572,33 @@
         <div id="sessionsCard" class="card hidden">
             <h2>Zapisane sesje</h2>
 
-            <button id="btnLoadSessions" class="btn btn-outline" style="margin-bottom: 15px;">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M23 4v6h-6M1 20v-6h6"/>
-                    <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
-                </svg>
-                Odswiezaj liste sesji
-            </button>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 15px;">
+                <button id="btnLoadSessions" class="btn btn-outline">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M23 4v6h-6M1 20v-6h6"/>
+                        <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+                    </svg>
+                    Odswiezaj liste sesji
+                </button>
+
+                <button id="btnCacheSessions" class="btn btn-outline">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                        <polyline points="7 10 12 15 17 10"/>
+                        <line x1="12" y1="15" x2="12" y2="3"/>
+                    </svg>
+                    Pobierz sesje do cache
+                </button>
+            </div>
 
             <div id="sessionsLoading" class="loading hidden">
                 <div class="spinner"></div>
                 Ladowanie sesji...
+            </div>
+
+            <div id="cacheLoading" class="loading hidden">
+                <div class="spinner"></div>
+                <span id="cacheProgress">Pobieranie sesji do cache...</span>
             </div>
 
             <ul id="sessionList" class="session-list"></ul>
@@ -594,6 +610,23 @@
                 </svg>
                 <p>Brak zapisanych sesji</p>
             </div>
+        </div>
+
+        <!-- Cached Sessions (browsable without BLE connection) -->
+        <div id="cacheCard" class="card hidden">
+            <h2>Sesje z cache (ostatnie 24h)</h2>
+
+            <p id="cacheInfo" style="margin-bottom: 15px; font-size: 0.85rem; color: var(--text-secondary);"></p>
+
+            <ul id="cacheList" class="session-list"></ul>
+
+            <button id="btnClearCache" class="btn btn-outline" style="margin-top: 15px;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="3 6 5 6 21 6"/>
+                    <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+                </svg>
+                Wyczysc cache
+            </button>
         </div>
 
         <!-- Shot List -->
@@ -758,7 +791,14 @@
         btnStop: document.getElementById('btnStop'),
         sessionsCard: document.getElementById('sessionsCard'),
         btnLoadSessions: document.getElementById('btnLoadSessions'),
+        btnCacheSessions: document.getElementById('btnCacheSessions'),
         sessionsLoading: document.getElementById('sessionsLoading'),
+        cacheLoading: document.getElementById('cacheLoading'),
+        cacheProgress: document.getElementById('cacheProgress'),
+        cacheCard: document.getElementById('cacheCard'),
+        cacheInfo: document.getElementById('cacheInfo'),
+        cacheList: document.getElementById('cacheList'),
+        btnClearCache: document.getElementById('btnClearCache'),
         sessionList: document.getElementById('sessionList'),
         noSessions: document.getElementById('noSessions'),
         shotsCard: document.getElementById('shotsCard'),
@@ -797,6 +837,86 @@
         } catch (e) {
             console.warn('localStorage unavailable:', e);
         }
+    }
+
+    // Session cache (localStorage) — sessions from the last 24h with full
+    // shot lists, browsable without a BLE connection
+    const STORAGE_KEY_SESSION_CACHE = 'sgtimer_session_cache';
+    const CACHE_MAX_AGE_S = 24 * 3600;
+
+    function readSessionCache() {
+        try {
+            const raw = localStorage.getItem(STORAGE_KEY_SESSION_CACHE);
+            if (!raw) return null;
+            const cache = JSON.parse(raw);
+            if (!cache || !Array.isArray(cache.sessions)) return null;
+            return cache;
+        } catch (e) {
+            console.warn('Session cache read error:', e);
+            return null;
+        }
+    }
+
+    function writeSessionCache(cache) {
+        try {
+            localStorage.setItem(STORAGE_KEY_SESSION_CACHE, JSON.stringify(cache));
+            return true;
+        } catch (e) {
+            console.error('Session cache write error:', e);
+            alert('Blad zapisu cache: ' + e.message);
+            return false;
+        }
+    }
+
+    function clearSessionCache() {
+        try {
+            localStorage.removeItem(STORAGE_KEY_SESSION_CACHE);
+        } catch (e) {
+            console.warn('localStorage unavailable:', e);
+        }
+        renderCacheCard();
+    }
+
+    // Render the cached sessions card — works without a BLE connection
+    function renderCacheCard() {
+        const cache = readSessionCache();
+        elements.cacheList.innerHTML = '';
+
+        if (!cache || cache.sessions.length === 0) {
+            elements.cacheCard.classList.add('hidden');
+            return;
+        }
+
+        elements.cacheCard.classList.remove('hidden');
+        elements.cacheInfo.textContent =
+            `Pobrano: ${formatDate(cache.savedAt)} · sesji: ${cache.sessions.length}`;
+
+        cache.sessions.forEach(({ sessId, shots }) => {
+            const li = document.createElement('li');
+            li.className = 'session-item';
+            const lastShot = shots[shots.length - 1];
+            const meta = shots.length === 0
+                ? 'Brak strzałów'
+                : `${shots.length} strzałów · ${formatTime(lastShot.time)}s`;
+            li.innerHTML = `
+                <div>
+                    <div class="session-date">${formatDate(sessId)}</div>
+                    <div class="session-meta">${meta}</div>
+                </div>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="9 18 15 12 9 6"/>
+                </svg>
+            `;
+            li.addEventListener('click', () => {
+                // Supersede any in-flight BLE shot load so it does not
+                // overwrite this instantly-rendered cached view
+                shotsLoadToken++;
+                document.querySelectorAll('.session-item').forEach(item => item.classList.remove('active'));
+                li.classList.add('active');
+                renderShots(sessId, shots);
+            });
+            elements.cacheList.appendChild(li);
+        });
     }
 
     // Check Web Bluetooth support
@@ -1197,6 +1317,7 @@
         await stopMetadataLoad();
 
         elements.btnLoadSessions.disabled = true;
+        elements.btnCacheSessions.disabled = true;
         elements.sessionsLoading.classList.remove('hidden');
         elements.sessionList.innerHTML = '';
         elements.noSessions.classList.add('hidden');
@@ -1257,6 +1378,7 @@
             alert('Blad ladowania sesji: ' + error.message);
         } finally {
             elements.btnLoadSessions.disabled = false;
+            elements.btnCacheSessions.disabled = false;
         }
     }
 
@@ -1302,6 +1424,98 @@
             } catch (error) {
                 console.warn('Metadata load error for session', sessId, error);
             }
+        }
+    }
+
+    // Download sessions from the last 24h (with full shot lists) into
+    // localStorage so they can be browsed without occupying the timer via BLE
+    async function downloadSessionsToCache() {
+        // Supersede any running shot load and stop the background metadata
+        // loader before resetting the sessionList/shotList read cursors
+        const token = ++shotsLoadToken;
+        await stopMetadataLoad();
+        if (token !== shotsLoadToken) return;
+
+        elements.btnCacheSessions.disabled = true;
+        elements.btnLoadSessions.disabled = true;
+        elements.cacheLoading.classList.remove('hidden');
+        elements.cacheProgress.textContent = 'Pobieranie listy sesji...';
+
+        try {
+            // Device time uses the same local-time-as-timestamp convention
+            // as session IDs, so the 24h cutoff is computed from device time
+            const timeValue = await gattExec(() => characteristics.unixTime.readValue());
+            const deviceNow = parseBigEndian(timeValue, 0, 4);
+            const cutoff = deviceNow - CACHE_MAX_AGE_S;
+
+            // Write 0xFFFFFFFF to start from newest
+            const startValue = new Uint8Array([0xFF, 0xFF, 0xFF, 0xFF]);
+            await gattExec(() => characteristics.sessionList.writeValue(startValue));
+
+            // Read session IDs newest-to-oldest; stop early below the cutoff
+            const sessionIds = [];
+            let endReached = false;
+            while (!endReached && sessionIds.length < 100) {
+                if (token !== shotsLoadToken) return;
+                const value = await gattExec(() => characteristics.sessionList.readValue());
+                const sessId = parseBigEndian(value, 0, 4);
+
+                if (sessId === 0xFFFFFFFF || sessId < cutoff) {
+                    endReached = true;
+                } else {
+                    sessionIds.push(sessId);
+                }
+            }
+
+            if (sessionIds.length === 0) {
+                alert('Brak sesji z ostatnich 24h na timerze.');
+                return;
+            }
+
+            // Read the full shot list for each session
+            const sessions = [];
+            for (let i = 0; i < sessionIds.length; i++) {
+                const sessId = sessionIds[i];
+                elements.cacheProgress.textContent =
+                    `Pobieranie sesji ${i + 1}/${sessionIds.length}...`;
+
+                const sessIdBytes = new Uint8Array([
+                    (sessId >> 24) & 0xFF,
+                    (sessId >> 16) & 0xFF,
+                    (sessId >> 8) & 0xFF,
+                    sessId & 0xFF
+                ]);
+                await gattExec(() => characteristics.shotList.writeValue(sessIdBytes));
+
+                const shots = [];
+                let shotsEnd = false;
+                while (!shotsEnd && shots.length < 1000) {
+                    if (token !== shotsLoadToken) return;
+                    const value = await gattExec(() => characteristics.shotList.readValue());
+                    const shotNum = parseBigEndian(value, 0, 2);
+                    const shotTime = parseBigEndian(value, 2, 4);
+
+                    if (shotTime === 0xFFFFFFFF) {
+                        shotsEnd = true;
+                    } else {
+                        shots.push({ num: shotNum + 1, time: shotTime });
+                    }
+                }
+
+                sessions.push({ sessId, shots });
+            }
+
+            if (writeSessionCache({ savedAt: deviceNow, sessions })) {
+                renderCacheCard();
+            }
+
+        } catch (error) {
+            console.error('Error caching sessions:', error);
+            alert('Blad pobierania sesji do cache: ' + error.message);
+        } finally {
+            elements.cacheLoading.classList.add('hidden');
+            elements.btnCacheSessions.disabled = false;
+            elements.btnLoadSessions.disabled = false;
         }
     }
 
@@ -1353,39 +1567,50 @@
             }
 
             if (token !== shotsLoadToken) return;
-            elements.shotsLoading.classList.add('hidden');
-
-            if (shots.length === 0) {
-                elements.noShots.classList.remove('hidden');
-                return;
-            }
-
-            elements.shotsTable.classList.remove('hidden');
-
-            // Store for calculator export
-            historySession = { sessId, shots };
-            elements.btnSendHistoryToCalc.classList.remove('hidden');
-
-            // Calculate splits and display
-            let prevTime = 0;
-            shots.forEach((shot, index) => {
-                const split = index === 0 ? shot.time : shot.time - prevTime;
-                prevTime = shot.time;
-
-                const row = document.createElement('tr');
-                row.innerHTML = `
-                    <td class="shot-num">${shot.num}</td>
-                    <td class="shot-time">${formatTime(shot.time)}s</td>
-                    <td class="split-time">${index === 0 ? '-' : '+' + formatTime(split) + 's'}</td>
-                `;
-                elements.shotsBody.appendChild(row);
-            });
+            renderShots(sessId, shots);
 
         } catch (error) {
             console.error('Error loading shots:', error);
             elements.shotsLoading.classList.add('hidden');
             alert('Blad ladowania strzalow: ' + error.message);
         }
+    }
+
+    // Render the shot table for a session (shared by BLE load and cache view)
+    function renderShots(sessId, shots) {
+        elements.selectedSessionDate.textContent = formatDate(sessId);
+        elements.shotsCard.classList.remove('hidden');
+        elements.shotsLoading.classList.add('hidden');
+        elements.shotsBody.innerHTML = '';
+
+        if (shots.length === 0) {
+            elements.shotsTable.classList.add('hidden');
+            elements.noShots.classList.remove('hidden');
+            elements.btnSendHistoryToCalc.classList.add('hidden');
+            return;
+        }
+
+        elements.noShots.classList.add('hidden');
+        elements.shotsTable.classList.remove('hidden');
+
+        // Store for calculator export
+        historySession = { sessId, shots };
+        elements.btnSendHistoryToCalc.classList.remove('hidden');
+
+        // Calculate splits and display
+        let prevTime = 0;
+        shots.forEach((shot, index) => {
+            const split = index === 0 ? shot.time : shot.time - prevTime;
+            prevTime = shot.time;
+
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td class="shot-num">${shot.num}</td>
+                <td class="shot-time">${formatTime(shot.time)}s</td>
+                <td class="split-time">${index === 0 ? '-' : '+' + formatTime(split) + 's'}</td>
+            `;
+            elements.shotsBody.appendChild(row);
+        });
     }
 
     // Send historical session data to external calculator (includes session date in opis)
@@ -1452,6 +1677,8 @@
     elements.btnConnect.addEventListener('click', connect);
     elements.btnDisconnect.addEventListener('click', disconnect);
     elements.btnLoadSessions.addEventListener('click', loadSessions);
+    elements.btnCacheSessions.addEventListener('click', downloadSessionsToCache);
+    elements.btnClearCache.addEventListener('click', clearSessionCache);
     elements.btnSyncTime.addEventListener('click', syncDeviceTime);
     elements.btnStart.addEventListener('click', startNow);
     elements.btnStartPar.addEventListener('click', startWithRandomDelay);
@@ -1463,6 +1690,7 @@
     // Initialize
     checkBrowserSupport();
     loadNazwaToru();
+    renderCacheCard();
     </script>
 </body>
 </html>
