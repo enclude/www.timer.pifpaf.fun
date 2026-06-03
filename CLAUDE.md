@@ -63,6 +63,17 @@ Prefix nazwy urządzenia: `SG-SST4`
 - SAVED_SESSION_ID_LIST: zapis `0xFFFFFFFF` → start od najnowszej; odczyty od najnowszej do najstarszej
 - Web Bluetooth dopuszcza **tylko jedną operację GATT naraz** na urządzenie — równoległe `readValue`/`writeValue` kończą się błędem `GATT operation failed for unknown reason`; wszystkie operacje GATT muszą iść przez kolejkę `gattExec()`, a sekwencje kursorowe (sessionList/shotList) nie mogą się przeplatać (`stopMetadataLoad()` + `shotsLoadToken`)
 
+## Cache sesji (localStorage)
+
+Przycisk "Pobierz sesje do cache" (`downloadSessionsToCache()`) zapisuje sesje z ostatnich 24h
+(wraz z pełnymi listami strzałów) w `localStorage` pod kluczem `sgtimer_session_cache`
+(format: `{ savedAt, sessions: [{ sessId, shots: [{num, time}] }] }`, najnowsze pierwsze).
+Granica 24h liczona od **czasu urządzenia** (charakterystyka Unix Time) — ta sama konwencja
+czasu lokalnego co ID sesji. Odczyt listy sesji przerywany wcześniej, gdy `sessId < cutoff`
+(lista idzie od najnowszej). Karta "Sesje z cache" (`renderCacheCard()`) działa **bez połączenia BLE**
+(nie jest ukrywana w `onDisconnected()`), a klik w sesję renderuje strzały przez wspólne
+`renderShots()` (używane też przez ścieżkę BLE) — łącznie z eksportem do kalkulatora.
+
 ## Integracja z kalkulatorem PiRO
 
 Przyciski "Wyslij do kalkulatora" otwieraja `https://piro-kalkulator.pifpaf.fun/` z parametrami GET:

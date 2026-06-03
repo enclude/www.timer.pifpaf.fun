@@ -11,6 +11,7 @@ Strona: [timer.pifpaf.fun](https://timer.pifpaf.fun) | GitHub: [enclude/www.time
 - **Sterowanie sesja** - Start / Stop sesji strzeleckiej
 - **Start z opoznieniem** - Start PAR z losowym opoznieniem 1-4s (PAR_SETUP)
 - **Historia sesji** - przegladanie sesji zapisanych w urzadzeniu z liczba strzalow i czasem trwania
+- **Cache sesji** - pobranie sesji z ostatnich 24h (wraz z listami strzalow) do pamieci przegladarki (localStorage); pobrane sesje mozna przegladac i wysylac do kalkulatora bez polaczenia BLE — timer pozostaje wolny dla innych
 - **Lista strzalow** - czasy i splity dla wybranej sesji
 - **Wyslij do kalkulatora** - przesyla dane serii do [piro-kalkulator.pifpaf.fun](https://piro-kalkulator.pifpaf.fun/) — dostepne zarowno po zakonczeniu biezacej sesji, jak i z poziomu historii
 - **Wersja w stopce** - hash commitu z linkiem do GitHub, generowany automatycznie przez CI
@@ -41,6 +42,7 @@ Aplikacja jest kompatybilna z BLE API w wersji 3.2.
    - Po zakonczeniu sesji kliknac "Wyslij do kalkulatora"
    - Przegladac zapisane sesje — lista wyswietla liczbe strzalow i czas trwania
    - Kliknac sesje historyczna, obejrzec strzaly i wyslac do kalkulatora (opis zawiera date sesji)
+   - Kliknac "Pobierz sesje do cache" — sesje z ostatnich 24h zapisza sie w przegladarce; po rozlaczeniu mozna je dalej przegladac w karcie "Sesje z cache" i wysylac do kalkulatora
 
 ## Specyfikacja techniczna
 
