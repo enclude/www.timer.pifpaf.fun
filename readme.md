@@ -98,10 +98,16 @@ Przycisk "Wyslij do kalkulatora" otwiera [piro-kalkulator.pifpaf.fun](https://pi
 | `liczba_strzalow` | Liczba strzalow w serii |
 | `czas_bazowy` | Czas ostatniego strzalu w sekundach (np. `15.80`) |
 | `opis` | Lista strzalow z czasami i splitami (URL-encoded) |
+| `nazwa_toru` | Nazwa toru z pola "Dane do kalkulatora" (tylko gdy wypelnione) |
+| `uczestnik` | Uczestnik z pola "Dane do kalkulatora" (tylko gdy wypelnione) |
 
 Dostepny w dwoch trybach:
 - **Biezaca sesja** — pojawia sie po zakonczeniu sesji (SESSION_STOPPED), `opis` zawiera same strzaly
 - **Sesja historyczna** — pojawia sie pod lista strzalow wybranej sesji, `opis` zaczyna sie od daty i godziny sesji
+
+Po polaczeniu z timerem widoczna jest karta **"Dane do kalkulatora"** z polami "Nazwa toru" i "Uczestnik".
+Nazwa toru jest zapamietywana w przegladarce (`localStorage`) i przywracana przy kolejnej wizycie;
+uczestnik jest wpisywany kazdorazowo. Oba pola sa opcjonalne — puste nie sa dolaczane do URL.
 
 ### PAR_SETUP
 

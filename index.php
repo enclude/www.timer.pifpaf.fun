@@ -210,6 +210,38 @@
             color: var(--text-primary);
         }
 
+        .calc-fields {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+
+        .field-group label {
+            display: block;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+
+        .field-group input {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid var(--border-light);
+            border-radius: 6px;
+            font-size: 1rem;
+            font-family: inherit;
+            color: var(--text-primary);
+            background: white;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .field-group input:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--focus-glow);
+        }
+
         .session-list {
             list-style: none;
             max-height: 300px;
@@ -471,6 +503,21 @@
             </div>
         </div>
 
+        <!-- Calculator data: stage name + participant (sent as GET params) -->
+        <div id="calcDataCard" class="card hidden">
+            <h2>Dane do kalkulatora</h2>
+            <div class="calc-fields">
+                <div class="field-group">
+                    <label for="inputNazwaToru">Nazwa toru</label>
+                    <input type="text" id="inputNazwaToru" placeholder="np. Tor 1">
+                </div>
+                <div class="field-group">
+                    <label for="inputUczestnik">Uczestnik</label>
+                    <input type="text" id="inputUczestnik" placeholder="np. Jan Kowalski">
+                </div>
+            </div>
+        </div>
+
         <!-- Live Session Display -->
         <div id="liveSection" class="hidden">
             <div class="live-display">
@@ -694,8 +741,33 @@
         liveShotsBody: document.getElementById('liveShotsBody'),
         btnSendToCalc: document.getElementById('btnSendToCalc'),
         btnStartPar: document.getElementById('btnStartPar'),
-        btnSendHistoryToCalc: document.getElementById('btnSendHistoryToCalc')
+        btnSendHistoryToCalc: document.getElementById('btnSendHistoryToCalc'),
+        calcDataCard: document.getElementById('calcDataCard'),
+        inputNazwaToru: document.getElementById('inputNazwaToru'),
+        inputUczestnik: document.getElementById('inputUczestnik')
     };
+
+    // Persist stage name per browser (localStorage)
+    const STORAGE_KEY_NAZWA_TORU = 'sgtimer_nazwa_toru';
+
+    function loadNazwaToru() {
+        try {
+            const saved = localStorage.getItem(STORAGE_KEY_NAZWA_TORU);
+            if (saved !== null) {
+                elements.inputNazwaToru.value = saved;
+            }
+        } catch (e) {
+            console.warn('localStorage unavailable:', e);
+        }
+    }
+
+    function saveNazwaToru() {
+        try {
+            localStorage.setItem(STORAGE_KEY_NAZWA_TORU, elements.inputNazwaToru.value);
+        } catch (e) {
+            console.warn('localStorage unavailable:', e);
+        }
+    }
 
     // Check Web Bluetooth support
     function checkBrowserSupport() {
@@ -796,6 +868,7 @@
             elements.btnConnect.classList.add('hidden');
             elements.btnDisconnect.classList.remove('hidden');
             elements.deviceInfo.classList.remove('hidden');
+            elements.calcDataCard.classList.remove('hidden');
             elements.liveSection.classList.remove('hidden');
             elements.sessionsCard.classList.remove('hidden');
 
@@ -831,6 +904,7 @@
         elements.btnConnect.disabled = false;
         elements.btnDisconnect.classList.add('hidden');
         elements.deviceInfo.classList.add('hidden');
+        elements.calcDataCard.classList.add('hidden');
         elements.liveSection.classList.add('hidden');
         elements.sessionsCard.classList.add('hidden');
         elements.shotsCard.classList.add('hidden');
@@ -1265,6 +1339,7 @@
             czas_bazowy: czasBazowy,
             opis: opis
         });
+        appendCalcDataParams(params);
         window.open(`https://piro-kalkulator.pifpaf.fun/?${params.toString()}`, '_blank');
     }
 
@@ -1288,7 +1363,16 @@
             czas_bazowy: czasBazowy,
             opis: opis
         });
+        appendCalcDataParams(params);
         window.open(`https://piro-kalkulator.pifpaf.fun/?${params.toString()}`, '_blank');
+    }
+
+    // Append stage name and participant to calculator URL params (if filled in)
+    function appendCalcDataParams(params) {
+        const nazwaToru = elements.inputNazwaToru.value.trim();
+        const uczestnik = elements.inputUczestnik.value.trim();
+        if (nazwaToru) params.set('nazwa_toru', nazwaToru);
+        if (uczestnik) params.set('uczestnik', uczestnik);
     }
 
     // Event listeners
@@ -1300,9 +1384,11 @@
     elements.btnStop.addEventListener('click', () => sendCommand(CMD_SESSION_STOP));
     elements.btnSendToCalc.addEventListener('click', sendToCalculator);
     elements.btnSendHistoryToCalc.addEventListener('click', sendHistoryToCalculator);
+    elements.inputNazwaToru.addEventListener('input', saveNazwaToru);
 
     // Initialize
     checkBrowserSupport();
+    loadNazwaToru();
     </script>
 </body>
 </html>

@@ -62,6 +62,14 @@ Prefix nazwy urządzenia: `SG-SST4`
 - SHOT_LIST read: `[shot_number(2), shot_time(4)]` — 6 bajtów łącznie; sentinel w polu shot_time
 - SAVED_SESSION_ID_LIST: zapis `0xFFFFFFFF` → start od najnowszej; odczyty od najnowszej do najstarszej
 
+## Integracja z kalkulatorem PiRO
+
+Przyciski "Wyslij do kalkulatora" otwieraja `https://piro-kalkulator.pifpaf.fun/` z parametrami GET:
+`liczba_strzalow`, `czas_bazowy`, `opis` oraz opcjonalnie `nazwa_toru` i `uczestnik`
+(z karty "Dane do kalkulatora", dolaczane tylko gdy niepuste — `appendCalcDataParams()`).
+Nazwa toru jest pamietana per przegladarka w `localStorage` (klucz `sgtimer_nazwa_toru`),
+uczestnik nie jest pamietany.
+
 ## Konwencje
 
 - Język interfejsu: **polski**
