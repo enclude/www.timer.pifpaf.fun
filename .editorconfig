@@ -1,0 +1,5 @@
+# Editor settings: save text files with LF line endings
+root = true
+
+[*]
+end_of_line = lf
