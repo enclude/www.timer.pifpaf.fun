@@ -67,12 +67,18 @@ Prefix nazwy urządzenia: `SG-SST4`
 
 Przycisk "Pobierz sesje do cache" (`downloadSessionsToCache()`) zapisuje sesje z ostatnich 24h
 (wraz z pełnymi listami strzałów) w `localStorage` pod kluczem `sgtimer_session_cache`
-(format: `{ savedAt, sessions: [{ sessId, shots: [{num, time}] }] }`, najnowsze pierwsze).
+(format: `{ savedAt, sessions: [{ sessId, shots: [{num, time}], nazwaToru?, uczestnik? }] }`,
+najnowsze pierwsze).
 Granica 24h liczona od **czasu urządzenia** (charakterystyka Unix Time) — ta sama konwencja
 czasu lokalnego co ID sesji. Odczyt listy sesji przerywany wcześniej, gdy `sessId < cutoff`
 (lista idzie od najnowszej). Karta "Sesje z cache" (`renderCacheCard()`) działa **bez połączenia BLE**
 (nie jest ukrywana w `onDisconnected()`), a klik w sesję renderuje strzały przez wspólne
 `renderShots()` (używane też przez ścieżkę BLE) — łącznie z eksportem do kalkulatora.
+Każdej sesji w cache można przypisać **tor i uczestnika** (ołówek przy pozycji,
+`editCachedSessionLabels()` — dwa `prompt()` z prefiltrem z zapisanych etykiet lub formularza
+"Dane do kalkulatora"). Etykiety są user-input — renderowane przez `textContent`, nie `innerHTML`.
+Przy eksporcie do kalkulatora etykiety sesji mają pierwszeństwo nad formularzem
+(per pole — `appendCalcDataParams(params, overrides)`; puste pole etykiety = fallback do formularza).
 
 ## Integracja z kalkulatorem PiRO
 

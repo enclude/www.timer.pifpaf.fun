@@ -891,7 +891,8 @@
         elements.cacheInfo.textContent =
             `Pobrano: ${formatDate(cache.savedAt)} · sesji: ${cache.sessions.length}`;
 
-        cache.sessions.forEach(({ sessId, shots }) => {
+        cache.sessions.forEach(session => {
+            const { sessId, shots } = session;
             const li = document.createElement('li');
             li.className = 'session-item';
             const lastShot = shots[shots.length - 1];
@@ -901,22 +902,66 @@
             li.innerHTML = `
                 <div>
                     <div class="session-date">${formatDate(sessId)}</div>
+                    <div class="session-meta cache-label hidden" style="color: var(--accent); font-weight: 600;"></div>
                     <div class="session-meta">${meta}</div>
                 </div>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points="9 18 15 12 9 6"/>
-                </svg>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <button class="btn btn-outline btn-small cache-edit" style="margin-top: 0;" title="Przypisz tor / uczestnika">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M17 3a2.828 2.828 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>
+                        </svg>
+                    </button>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="9 18 15 12 9 6"/>
+                    </svg>
+                </div>
             `;
+            // Labels are user-entered text — set via textContent, not innerHTML
+            const label = [session.nazwaToru, session.uczestnik].filter(Boolean).join(' · ');
+            if (label) {
+                const labelEl = li.querySelector('.cache-label');
+                labelEl.textContent = label;
+                labelEl.classList.remove('hidden');
+            }
+            li.querySelector('.cache-edit').addEventListener('click', (ev) => {
+                ev.stopPropagation();
+                editCachedSessionLabels(sessId);
+            });
             li.addEventListener('click', () => {
                 // Supersede any in-flight BLE shot load so it does not
                 // overwrite this instantly-rendered cached view
                 shotsLoadToken++;
                 document.querySelectorAll('.session-item').forEach(item => item.classList.remove('active'));
                 li.classList.add('active');
-                renderShots(sessId, shots);
+                renderShots(sessId, shots, session);
             });
             elements.cacheList.appendChild(li);
         });
+    }
+
+    // Assign stage name and participant to a cached session (prompt-based,
+    // prefilled from stored labels or the calculator form)
+    function editCachedSessionLabels(sessId) {
+        const cache = readSessionCache();
+        const entry = cache ? cache.sessions.find(s => s.sessId === sessId) : null;
+        if (!entry) return;
+
+        const nazwaToru = prompt('Nazwa toru:', entry.nazwaToru || elements.inputNazwaToru.value);
+        if (nazwaToru === null) return;
+        const uczestnik = prompt('Uczestnik:', entry.uczestnik || elements.inputUczestnik.value);
+        if (uczestnik === null) return;
+
+        entry.nazwaToru = nazwaToru.trim();
+        entry.uczestnik = uczestnik.trim();
+
+        if (writeSessionCache(cache)) {
+            // Keep an already-rendered shot view consistent with the new labels
+            if (historySession.sessId === sessId) {
+                historySession.nazwaToru = entry.nazwaToru;
+                historySession.uczestnik = entry.uczestnik;
+            }
+            renderCacheCard();
+        }
     }
 
     // Check Web Bluetooth support
@@ -1576,8 +1621,9 @@
         }
     }
 
-    // Render the shot table for a session (shared by BLE load and cache view)
-    function renderShots(sessId, shots) {
+    // Render the shot table for a session (shared by BLE load and cache view);
+    // labels carries optional nazwaToru/uczestnik from a cached session
+    function renderShots(sessId, shots, labels = {}) {
         elements.selectedSessionDate.textContent = formatDate(sessId);
         elements.shotsCard.classList.remove('hidden');
         elements.shotsLoading.classList.add('hidden');
@@ -1593,8 +1639,8 @@
         elements.noShots.classList.add('hidden');
         elements.shotsTable.classList.remove('hidden');
 
-        // Store for calculator export
-        historySession = { sessId, shots };
+        // Store for calculator export (cached sessions carry their labels)
+        historySession = { sessId, shots, nazwaToru: labels.nazwaToru, uczestnik: labels.uczestnik };
         elements.btnSendHistoryToCalc.classList.remove('hidden');
 
         // Calculate splits and display
@@ -1637,7 +1683,7 @@
             czas_bazowy: czasBazowy,
             opis: opis
         });
-        appendCalcDataParams(params);
+        appendCalcDataParams(params, historySession);
         window.open(`https://piro-kalkulator.pifpaf.fun/?${params.toString()}`, '_blank');
     }
 
@@ -1665,10 +1711,11 @@
         window.open(`https://piro-kalkulator.pifpaf.fun/?${params.toString()}`, '_blank');
     }
 
-    // Append stage name and participant to calculator URL params (if filled in)
-    function appendCalcDataParams(params) {
-        const nazwaToru = elements.inputNazwaToru.value.trim();
-        const uczestnik = elements.inputUczestnik.value.trim();
+    // Append stage name and participant to calculator URL params (if filled in);
+    // per-session labels (cached sessions) take precedence over the form inputs
+    function appendCalcDataParams(params, overrides = {}) {
+        const nazwaToru = (overrides.nazwaToru || elements.inputNazwaToru.value).trim();
+        const uczestnik = (overrides.uczestnik || elements.inputUczestnik.value).trim();
         if (nazwaToru) params.set('nazwa_toru', nazwaToru);
         if (uczestnik) params.set('uczestnik', uczestnik);
     }

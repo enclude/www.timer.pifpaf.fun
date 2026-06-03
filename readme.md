@@ -12,6 +12,7 @@ Strona: [timer.pifpaf.fun](https://timer.pifpaf.fun) | GitHub: [enclude/www.time
 - **Start z opoznieniem** - Start PAR z losowym opoznieniem 1-4s (PAR_SETUP)
 - **Historia sesji** - przegladanie sesji zapisanych w urzadzeniu z liczba strzalow i czasem trwania
 - **Cache sesji** - pobranie sesji z ostatnich 24h (wraz z listami strzalow) do pamieci przegladarki (localStorage); pobrane sesje mozna przegladac i wysylac do kalkulatora bez polaczenia BLE — timer pozostaje wolny dla innych
+- **Etykiety sesji w cache** - kazdej sesji w cache mozna przypisac nazwe toru i uczestnika (ikona olowka); etykiety sa zapamietywane i uzywane przy wysylaniu do kalkulatora (maja pierwszenstwo nad formularzem "Dane do kalkulatora")
 - **Lista strzalow** - czasy i splity dla wybranej sesji
 - **Wyslij do kalkulatora** - przesyla dane serii do [piro-kalkulator.pifpaf.fun](https://piro-kalkulator.pifpaf.fun/) — dostepne zarowno po zakonczeniu biezacej sesji, jak i z poziomu historii
 - **Wersja w stopce** - hash commitu z linkiem do GitHub, generowany automatycznie przez CI
