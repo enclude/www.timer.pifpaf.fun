@@ -101,13 +101,17 @@ Przycisk "Wyslij do kalkulatora" otwiera [piro-kalkulator.pifpaf.fun](https://pi
 |----------|------|
 | `liczba_strzalow` | Liczba strzalow w serii |
 | `czas_bazowy` | Czas ostatniego strzalu w sekundach (np. `15.80`) |
-| `opis` | Lista strzalow z czasami i splitami (URL-encoded) |
+| `opis` | Opoznienie startu + lista strzalow z czasami i splitami (URL-encoded) |
 | `nazwa_toru` | Nazwa toru z pola "Dane do kalkulatora" (tylko gdy wypelnione) |
 | `uczestnik` | Uczestnik z pola "Dane do kalkulatora" (tylko gdy wypelnione) |
 
 Dostepny w dwoch trybach:
-- **Biezaca sesja** — pojawia sie po zakonczeniu sesji (SESSION_STOPPED), `opis` zawiera same strzaly
-- **Sesja historyczna** — pojawia sie pod lista strzalow wybranej sesji, `opis` zaczyna sie od daty i godziny sesji
+- **Biezaca sesja** — pojawia sie po zakonczeniu sesji (SESSION_STOPPED), `opis` zaczyna sie od opoznienia startu (np. `opoznienie startu 2.3s`), dalej lista strzalow
+- **Sesja historyczna** — pojawia sie pod lista strzalow wybranej sesji, `opis` zaczyna sie od daty i godziny sesji, a nastepnie opoznienia startu (jesli zapisane w cache)
+
+Opoznienie startu (delay od naciśniecia "Start") pochodzi ze zdarzenia SESSION_STARTED i jest
+dolaczane do `opis` dla sesji live oraz sesji z cache (gdzie jest trwale zapisywane). Sesje wczytane
+bezposrednio przez BLE ("Wczytaj sesje") nie zawieraja tej informacji — SHOT_LIST jej nie przekazuje.
 
 Po polaczeniu z timerem widoczna jest karta **"Dane do kalkulatora"** z polami "Nazwa toru" i "Uczestnik".
 Nazwa toru jest zapamietywana w przegladarce (`localStorage`) i przywracana przy kolejnej wizycie;
