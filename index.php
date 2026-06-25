@@ -941,7 +941,7 @@
 
     // Auto-save a finished live session into the cache — only when both
     // stage name and participant are filled in "Dane do kalkulatora"
-    function saveLiveSessionToCache(sessId, shots) {
+    function saveLiveSessionToCache(sessId, shots, startDelay) {
         const nazwaToru = elements.inputNazwaToru.value.trim();
         const uczestnik = elements.inputUczestnik.value.trim();
         if (!nazwaToru || !uczestnik || !sessId || shots.length === 0) return false;
@@ -953,6 +953,7 @@
             nazwaToru,
             uczestnik
         };
+        if (typeof startDelay === 'number') entry.startDelay = startDelay;
         const idx = cache.sessions.findIndex(s => s.sessId === sessId);
         if (idx >= 0) {
             cache.sessions[idx] = entry;
@@ -978,6 +979,7 @@
             if (old) {
                 if (old.nazwaToru) s.nazwaToru = old.nazwaToru;
                 if (old.uczestnik) s.uczestnik = old.uczestnik;
+                if (typeof old.startDelay === 'number') s.startDelay = old.startDelay;
             }
         });
     }
@@ -1255,7 +1257,8 @@
             id: sessId,
             active: true,
             shots: [],
-            lastShotTime: 0
+            lastShotTime: 0,
+            startDelay: startDelay
         };
 
         elements.sessionStatus.textContent = `Sesja rozpoczeta (opoznienie: ${startDelay}s)`;
@@ -1314,7 +1317,7 @@
         }
 
         // Auto-cache the finished session when tor + uczestnik are filled in
-        if (saveLiveSessionToCache(sessId, currentSession.shots)) {
+        if (saveLiveSessionToCache(sessId, currentSession.shots, currentSession.startDelay)) {
             elements.sessionStatus.textContent += ' · zapisano w cache';
         }
 
@@ -1371,16 +1374,23 @@
         await sendCommand(CMD_SESSION_START);
     }
 
-    // Start session with random delay 1.0–4.0s via PAR_SETUP (API 1.5)
-    // start_delay=0xFFFF triggers random delay, time_limit=0 (unlimited), shot_limit=0 (unlimited)
+    // Start session with random delay 1.0–3.0s via PAR_SETUP (API 1.5)
+    // Delay is randomized here in JS (device's built-in 0xFFFF would give 1–4s).
+    // start_delay in 0.1s units (big-endian), time_limit=0 (unlimited), shot_limit=0 (unlimited)
     async function startWithRandomDelay() {
         if (!characteristics.parSetup) {
             alert('PAR_SETUP niedostepny — sprawdz konsole po poprawny UUID charakterystyki.');
             return;
         }
         try {
-            const parData = new Uint8Array([0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00]);
-            console.log('Writing PAR_SETUP to UUID:', BLE_CHAR_PAR_SETUP, parData);
+            // Random delay in tenths of a second within 1.0–3.0s (10..30 inclusive)
+            const delayTenths = 10 + Math.floor(Math.random() * 21);
+            const parData = new Uint8Array([
+                (delayTenths >> 8) & 0xFF, delayTenths & 0xFF,
+                0x00, 0x00,
+                0x00, 0x00
+            ]);
+            console.log('Writing PAR_SETUP to UUID:', BLE_CHAR_PAR_SETUP, 'delay(s):', delayTenths / 10, parData);
             await gattExec(() => characteristics.parSetup.writeValue(parData));
             await sendCommand(CMD_SESSION_START);
         } catch (error) {
@@ -1691,7 +1701,7 @@
         elements.shotsTable.classList.remove('hidden');
 
         // Store for calculator export (cached sessions carry their labels)
-        historySession = { sessId, shots, nazwaToru: labels.nazwaToru, uczestnik: labels.uczestnik };
+        historySession = { sessId, shots, nazwaToru: labels.nazwaToru, uczestnik: labels.uczestnik, startDelay: labels.startDelay };
         elements.btnSendHistoryToCalc.classList.remove('hidden');
 
         // Calculate splits and display
@@ -1727,7 +1737,10 @@
             const splitStr = index === 0 ? '' : ` (+${formatTime(split)}s)`;
             return `${shot.num}: ${formatTime(shot.time)}s${splitStr}`;
         });
-        const opis = sessionDate + ' | ' + opisParts.join(' | ');
+        let opis = sessionDate + ' | ' + opisParts.join(' | ');
+        if (typeof historySession.startDelay === 'number') {
+            opis = sessionDate + ` | opoznienie startu ${historySession.startDelay}s | ` + opisParts.join(' | ');
+        }
 
         const params = new URLSearchParams({
             liczba_strzalow: liczbaStrzalow,
@@ -1751,7 +1764,10 @@
             const splitStr = shot.num === 1 ? '' : ` (+${formatTime(shot.split)}s)`;
             return `${shot.num}: ${formatTime(shot.time)}s${splitStr}`;
         });
-        const opis = opisParts.join(' | ');
+        let opis = opisParts.join(' | ');
+        if (typeof currentSession.startDelay === 'number') {
+            opis = `opoznienie startu ${currentSession.startDelay}s | ` + opis;
+        }
 
         const params = new URLSearchParams({
             liczba_strzalow: liczbaStrzalow,
