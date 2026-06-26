@@ -16,6 +16,7 @@ Strona: [timer.pifpaf.fun](https://timer.pifpaf.fun) | GitHub: [enclude/www.time
 - **Auto-zapis po Stop** - jesli nazwa toru i uczestnik sa wypelnione w "Dane do kalkulatora", zakonczona sesja (czasy, strzaly, splity) automatycznie zapisuje sie w cache z tymi etykietami — idealne przy obsludze kolejnych uczestnikow na tym samym torze
 - **Lista strzalow** - czasy i splity dla wybranej sesji
 - **Wyslij do kalkulatora** - przesyla dane serii do [piro-kalkulator.pifpaf.fun](https://piro-kalkulator.pifpaf.fun/) — dostepne zarowno po zakonczeniu biezacej sesji, jak i z poziomu historii
+- **Zapisz w bazie** - zapisuje wynik (czas i liczba strzalow) bezposrednio do bazy kalkulatora bez przechodzenia przez formularz; po zapisie wyswietla ID wpisu — przyda sie gdy nie liczymy A/C/D, a sam czas i liczba strzalow wystarczy
 - **Wersja w stopce** - hash commitu z linkiem do GitHub, generowany automatycznie przez CI
 
 ## Wymagania
@@ -45,6 +46,7 @@ Aplikacja jest kompatybilna z BLE API w wersji 3.2.
    - Przegladac zapisane sesje — lista wyswietla liczbe strzalow i czas trwania
    - Kliknac sesje historyczna, obejrzec strzaly i wyslac do kalkulatora (opis zawiera date sesji)
    - Kliknac "Pobierz sesje do cache" — sesje z ostatnich 24h zapisza sie w przegladarce; po rozlaczeniu mozna je dalej przegladac w karcie "Sesje z cache" i wysylac do kalkulatora
+   - Kliknac "Zapisz w bazie" — zapisuje wynik wprost do bazy kalkulatora (bez A/C/D) i wyswietla ID wpisu
 
 ## Specyfikacja techniczna
 
@@ -116,6 +118,23 @@ bezposrednio przez BLE ("Wczytaj sesje") nie zawieraja tej informacji — SHOT_L
 Po polaczeniu z timerem widoczna jest karta **"Dane do kalkulatora"** z polami "Nazwa toru" i "Uczestnik".
 Nazwa toru jest zapamietywana w przegladarce (`localStorage`) i przywracana przy kolejnej wizycie;
 uczestnik jest wpisywany kazdorazowo. Oba pola sa opcjonalne — puste nie sa dolaczane do URL.
+
+### Zapis bezposrednio do bazy (bez punktacji)
+
+Przycisk **"Zapisz w bazie"** pozwala zapisac wynik sesji wprost do bazy [piro-kalkulator.pifpaf.fun](https://piro-kalkulator.pifpaf.fun/) bez otwierania kalkulatora i recznego wpisywania A/C/D. Przyda sie gdy interesuje nas sam czas i liczba strzalow, bez pelnej punktacji IPSC.
+
+| Przycisk | Dostepnosc |
+|----------|------------|
+| "Zapisz w bazie" (biezaca sesja) | pojawia sie po zakonczeniu sesji (razem z "Wyslij do kalkulatora") |
+| "Zapisz w bazie" (historia/cache) | pojawia sie pod lista strzalow wybranej sesji |
+
+Po kliknieciu:
+1. Przycisk blokuje sie i wyswietla "Zapisywanie..."
+2. Dane (liczba strzalow, czas, opis z lista strzalow i splitami, nazwa toru, uczestnik) sa wysylane przez `POST` na `https://piro-kalkulator.pifpaf.fun/api_save.php`
+3. Po sukcesie wyswietlane jest **"Zapisano! ID: #123"** — identyfikator wpisu w bazie kalkulatora
+4. W razie bledu komunikat pokazuje przyczyne i przycisk odblokowuje sie
+
+Wynik zapisuje sie z zerami dla trafien A/C/D i wszystkich kar (`hit_factor = 0`). Pelne dane (lista strzalow z czasami i splitami) trafiaja do pola `opis`.
 
 ### PAR_SETUP
 
