@@ -390,6 +390,16 @@
             display: none !important;
         }
 
+        .db-save-status {
+            font-size: 0.85rem;
+            color: var(--accent);
+            font-weight: 500;
+        }
+
+        .db-save-status.error {
+            color: var(--alert-red);
+        }
+
         .loading {
             display: flex;
             align-items: center;
@@ -565,7 +575,16 @@
                     </svg>
                     Wyslij do kalkulatora
                 </button>
+                <button id="btnSaveToDb" class="btn btn-outline hidden">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <ellipse cx="12" cy="5" rx="9" ry="3"/>
+                        <path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/>
+                        <path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3"/>
+                    </svg>
+                    Zapisz w bazie
+                </button>
             </div>
+            <div id="dbSaveStatusLive" class="db-save-status hidden" style="margin-top: 8px; text-align: right;"></div>
         </div>
 
         <!-- Saved Sessions -->
@@ -658,7 +677,8 @@
                 <p>Brak strzalow w tej sesji</p>
             </div>
 
-            <div style="margin-top: 15px; text-align: right;">
+            <div style="margin-top: 15px; display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; align-items: center;">
+                <span id="dbSaveStatusHistory" class="db-save-status hidden"></span>
                 <button id="btnSendHistoryToCalc" class="btn btn-outline hidden">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <rect x="4" y="2" width="16" height="20" rx="2"/>
@@ -669,6 +689,14 @@
                         <line x1="14" y1="15" x2="16" y2="15"/>
                     </svg>
                     Wyslij do kalkulatora
+                </button>
+                <button id="btnSaveHistoryToDb" class="btn btn-outline hidden">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <ellipse cx="12" cy="5" rx="9" ry="3"/>
+                        <path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/>
+                        <path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3"/>
+                    </svg>
+                    Zapisz w bazie
                 </button>
             </div>
         </div>
@@ -810,8 +838,12 @@
         liveShotsCard: document.getElementById('liveShotsCard'),
         liveShotsBody: document.getElementById('liveShotsBody'),
         btnSendToCalc: document.getElementById('btnSendToCalc'),
+        btnSaveToDb: document.getElementById('btnSaveToDb'),
+        dbSaveStatusLive: document.getElementById('dbSaveStatusLive'),
         btnStartPar: document.getElementById('btnStartPar'),
         btnSendHistoryToCalc: document.getElementById('btnSendHistoryToCalc'),
+        btnSaveHistoryToDb: document.getElementById('btnSaveHistoryToDb'),
+        dbSaveStatusHistory: document.getElementById('dbSaveStatusHistory'),
         calcDataCard: document.getElementById('calcDataCard'),
         inputNazwaToru: document.getElementById('inputNazwaToru'),
         inputUczestnik: document.getElementById('inputUczestnik')
@@ -1268,6 +1300,8 @@
         elements.btnStartPar.disabled = true;
         elements.btnStop.disabled = false;
         elements.btnSendToCalc.classList.add('hidden');
+        elements.btnSaveToDb.classList.add('hidden');
+        elements.dbSaveStatusLive.classList.add('hidden');
         elements.liveShotsCard.classList.remove('hidden');
         elements.liveShotsBody.innerHTML = '';
 
@@ -1314,6 +1348,7 @@
         elements.btnStop.disabled = true;
         if (totalShots > 0) {
             elements.btnSendToCalc.classList.remove('hidden');
+            elements.btnSaveToDb.classList.remove('hidden');
         }
 
         // Auto-cache the finished session when tor + uczestnik are filled in
@@ -1643,6 +1678,8 @@
         elements.shotsTable.classList.add('hidden');
         elements.noShots.classList.add('hidden');
         elements.btnSendHistoryToCalc.classList.add('hidden');
+        elements.btnSaveHistoryToDb.classList.add('hidden');
+        elements.dbSaveStatusHistory.classList.add('hidden');
         elements.shotsBody.innerHTML = '';
 
         try {
@@ -1694,6 +1731,7 @@
             elements.shotsTable.classList.add('hidden');
             elements.noShots.classList.remove('hidden');
             elements.btnSendHistoryToCalc.classList.add('hidden');
+            elements.btnSaveHistoryToDb.classList.add('hidden');
             return;
         }
 
@@ -1703,6 +1741,7 @@
         // Store for calculator export (cached sessions carry their labels)
         historySession = { sessId, shots, nazwaToru: labels.nazwaToru, uczestnik: labels.uczestnik, startDelay: labels.startDelay };
         elements.btnSendHistoryToCalc.classList.remove('hidden');
+        elements.btnSaveHistoryToDb.classList.remove('hidden');
 
         // Calculate splits and display
         let prevTime = 0;
@@ -1787,6 +1826,79 @@
         if (uczestnik) params.set('uczestnik', uczestnik);
     }
 
+    const KALKULATOR_SAVE_URL = 'https://piro-kalkulator.pifpaf.fun/api_save.php';
+
+    function buildSavePayload(shots, overrides, includeDate) {
+        if (!shots || shots.length === 0) return null;
+        const lastShot = shots[shots.length - 1];
+        const liczbaStrzalow = shots.length;
+        const czasBazowy = parseFloat(formatTime(lastShot.time));
+
+        let prevTime = 0;
+        const opisParts = shots.map((shot, index) => {
+            const split = index === 0 ? shot.time : shot.time - prevTime;
+            prevTime = shot.time;
+            const splitStr = index === 0 ? '' : ` (+${formatTime(split)}s)`;
+            return `${shot.num}: ${formatTime(shot.time)}s${splitStr}`;
+        });
+        let opis = opisParts.join(' | ');
+
+        if (includeDate) {
+            const sessionDate = formatDate(overrides.sessId || 0);
+            opis = typeof overrides.startDelay === 'number'
+                ? `${sessionDate} | opoznienie startu ${overrides.startDelay}s | ${opis}`
+                : `${sessionDate} | ${opis}`;
+        } else if (typeof overrides.startDelay === 'number') {
+            opis = `opoznienie startu ${overrides.startDelay}s | ${opis}`;
+        }
+
+        const nazwaToru = (overrides.nazwaToru || elements.inputNazwaToru.value).trim();
+        const uczestnik = (overrides.uczestnik || elements.inputUczestnik.value).trim();
+
+        return { liczba_strzalow: liczbaStrzalow, czas_bazowy: czasBazowy, opis, nazwa_toru: nazwaToru, uczestnik };
+    }
+
+    async function postToDatabase(payload, btn, statusEl) {
+        btn.disabled = true;
+        statusEl.classList.remove('hidden', 'error');
+        statusEl.textContent = 'Zapisywanie...';
+        try {
+            const resp = await fetch(KALKULATOR_SAVE_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const data = await resp.json();
+            if (data.ok) {
+                statusEl.textContent = `Zapisano! ID: #${data.id}`;
+            } else {
+                statusEl.classList.add('error');
+                statusEl.textContent = `Błąd: ${data.error?.message || 'nieznany błąd'}`;
+                btn.disabled = false;
+            }
+        } catch (e) {
+            statusEl.classList.add('error');
+            statusEl.textContent = 'Błąd połączenia';
+            btn.disabled = false;
+        }
+    }
+
+    // Save live session directly to database (no A/C/D scoring)
+    function saveToDatabase() {
+        const shots = currentSession.shots;
+        const payload = buildSavePayload(shots, { startDelay: currentSession.startDelay }, false);
+        if (!payload) return;
+        postToDatabase(payload, elements.btnSaveToDb, elements.dbSaveStatusLive);
+    }
+
+    // Save historical session directly to database (no A/C/D scoring)
+    function saveHistoryToDatabase() {
+        const { sessId, shots, nazwaToru, uczestnik, startDelay } = historySession;
+        const payload = buildSavePayload(shots, { sessId, nazwaToru, uczestnik, startDelay }, true);
+        if (!payload) return;
+        postToDatabase(payload, elements.btnSaveHistoryToDb, elements.dbSaveStatusHistory);
+    }
+
     // Event listeners
     elements.btnConnect.addEventListener('click', connect);
     elements.btnDisconnect.addEventListener('click', disconnect);
@@ -1798,7 +1910,9 @@
     elements.btnStartPar.addEventListener('click', startWithRandomDelay);
     elements.btnStop.addEventListener('click', () => sendCommand(CMD_SESSION_STOP));
     elements.btnSendToCalc.addEventListener('click', sendToCalculator);
+    elements.btnSaveToDb.addEventListener('click', saveToDatabase);
     elements.btnSendHistoryToCalc.addEventListener('click', sendHistoryToCalculator);
+    elements.btnSaveHistoryToDb.addEventListener('click', saveHistoryToDatabase);
     elements.inputNazwaToru.addEventListener('input', saveNazwaToru);
 
     // Initialize

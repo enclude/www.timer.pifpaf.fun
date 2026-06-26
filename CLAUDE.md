@@ -95,6 +95,11 @@ Przyciski "Wyslij do kalkulatora" otwieraja `https://piro-kalkulator.pifpaf.fun/
 Nazwa toru jest pamietana per przegladarka w `localStorage` (klucz `sgtimer_nazwa_toru`),
 uczestnik nie jest pamietany.
 
+Przyciski "Zapisz w bazie" wysyłają POST na `https://piro-kalkulator.pifpaf.fun/api_save.php`
+z JSON `{liczba_strzalow, czas_bazowy, opis, nazwa_toru?, uczestnik?}` i wyświetlają zwrócone ID wpisu.
+Kary i punktacja są zerowe (tylko czas i liczba strzałów). Funkcje: `saveToDatabase()` (live),
+`saveHistoryToDatabase()` (historia), wspólna logika w `buildSavePayload()` i `postToDatabase()`.
+
 ## Konwencje
 
 - Język interfejsu: **polski**
