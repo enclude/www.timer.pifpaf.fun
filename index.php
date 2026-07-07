@@ -875,15 +875,20 @@
         inputPlayIdTone: document.getElementById('inputPlayIdTone')
     };
 
-    // Persist stage name per browser (localStorage)
+    // Persist stage name per browser (localStorage), expires 8h after last use
     const STORAGE_KEY_NAZWA_TORU = 'sgtimer_nazwa_toru';
+    const NAZWA_TORU_TTL_MS = 8 * 60 * 60 * 1000;
 
     function loadNazwaToru() {
         try {
-            const saved = localStorage.getItem(STORAGE_KEY_NAZWA_TORU);
-            if (saved !== null) {
-                elements.inputNazwaToru.value = saved;
+            const raw = localStorage.getItem(STORAGE_KEY_NAZWA_TORU);
+            if (raw === null) return;
+            const { value, savedAt } = JSON.parse(raw);
+            if (typeof savedAt !== 'number' || Date.now() - savedAt > NAZWA_TORU_TTL_MS) {
+                localStorage.removeItem(STORAGE_KEY_NAZWA_TORU);
+                return;
             }
+            elements.inputNazwaToru.value = value;
         } catch (e) {
             console.warn('localStorage unavailable:', e);
         }
@@ -891,7 +896,10 @@
 
     function saveNazwaToru() {
         try {
-            localStorage.setItem(STORAGE_KEY_NAZWA_TORU, elements.inputNazwaToru.value);
+            localStorage.setItem(STORAGE_KEY_NAZWA_TORU, JSON.stringify({
+                value: elements.inputNazwaToru.value,
+                savedAt: Date.now()
+            }));
         } catch (e) {
             console.warn('localStorage unavailable:', e);
         }
