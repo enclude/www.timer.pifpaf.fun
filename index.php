@@ -1346,6 +1346,7 @@
         elements.btnStop.disabled = false;
         elements.btnSendToCalc.classList.add('hidden');
         elements.btnSaveToDb.classList.add('hidden');
+        elements.btnSaveToDb.disabled = false;
         elements.dbSaveStatusLive.classList.add('hidden');
         elements.liveShotsCard.classList.remove('hidden');
         elements.liveShotsBody.innerHTML = '';
@@ -1724,6 +1725,7 @@
         elements.noShots.classList.add('hidden');
         elements.btnSendHistoryToCalc.classList.add('hidden');
         elements.btnSaveHistoryToDb.classList.add('hidden');
+        elements.btnSaveHistoryToDb.disabled = false;
         elements.dbSaveStatusHistory.classList.add('hidden');
         elements.shotsBody.innerHTML = '';
 
