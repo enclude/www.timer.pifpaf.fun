@@ -250,6 +250,27 @@
             box-shadow: 0 0 0 3px var(--focus-glow);
         }
 
+        .checkbox-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 15px;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            cursor: pointer;
+        }
+
+        .checkbox-row input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+
+        .btn-id-tone-replay {
+            margin: 6px 0 0 auto;
+        }
+
         .session-list {
             list-style: none;
             max-height: 300px;
@@ -535,6 +556,10 @@
                     <input type="text" id="inputUczestnik" placeholder="np. Jan Kowalski">
                 </div>
             </div>
+            <label class="checkbox-row" for="inputPlayIdTone">
+                <input type="checkbox" id="inputPlayIdTone">
+                Zagraj sygnał ID po zapisie (do synchronizacji z kamerą)
+            </label>
         </div>
 
         <!-- Live Session Display -->
@@ -846,7 +871,8 @@
         dbSaveStatusHistory: document.getElementById('dbSaveStatusHistory'),
         calcDataCard: document.getElementById('calcDataCard'),
         inputNazwaToru: document.getElementById('inputNazwaToru'),
-        inputUczestnik: document.getElementById('inputUczestnik')
+        inputUczestnik: document.getElementById('inputUczestnik'),
+        inputPlayIdTone: document.getElementById('inputPlayIdTone')
     };
 
     // Persist stage name per browser (localStorage)
@@ -866,6 +892,25 @@
     function saveNazwaToru() {
         try {
             localStorage.setItem(STORAGE_KEY_NAZWA_TORU, elements.inputNazwaToru.value);
+        } catch (e) {
+            console.warn('localStorage unavailable:', e);
+        }
+    }
+
+    // Persist "play ID tone after save" preference per browser (localStorage)
+    const STORAGE_KEY_PLAY_ID_TONE = 'sgtimer_play_id_tone';
+
+    function loadPlayIdTonePref() {
+        try {
+            elements.inputPlayIdTone.checked = localStorage.getItem(STORAGE_KEY_PLAY_ID_TONE) === '1';
+        } catch (e) {
+            console.warn('localStorage unavailable:', e);
+        }
+    }
+
+    function savePlayIdTonePref() {
+        try {
+            localStorage.setItem(STORAGE_KEY_PLAY_ID_TONE, elements.inputPlayIdTone.checked ? '1' : '0');
         } catch (e) {
             console.warn('localStorage unavailable:', e);
         }
@@ -1828,6 +1873,80 @@
 
     const KALKULATOR_SAVE_URL = 'https://piro-kalkulator.pifpaf.fun/api_save.php';
 
+    // ID tone signalling — lets Piro Overlay decode the saved session ID
+    // straight from the camera's audio track (no manual typing on import).
+    // Protocol MUST match piro_overlay.audio_sync.decode_id_tone exactly:
+    // marker 5000 Hz ("code starts here") + 4 digit tones, one of 10
+    // frequencies 5250-7500 Hz (step 250 Hz) per digit 0-9, 200ms tone +
+    // 50ms gap each, whole sequence repeated twice for redundancy. Band
+    // chosen to sit above the shot-timer buzzer band (2000-4500 Hz) and
+    // below the Nyquist of Piro Overlay's 16kHz audio extraction (8kHz) —
+    // verified against a real DJI Osmo Nano recording (no rolloff to 10kHz).
+    const ID_TONE_MARKER_FREQ = 5000;
+    const ID_TONE_DIGIT_FREQS = Array.from({ length: 10 }, (_, d) => 5250 + d * 250);
+    const ID_TONE_TONE_DUR = 0.20;
+    const ID_TONE_GAP = 0.05;
+    const ID_TONE_REPEATS = 2;
+    const ID_TONE_REPEAT_GAP = 0.3;
+    const ID_TONE_MAX_ID = 9999;
+
+    function playIdTone(sessionId) {
+        const id = Number(sessionId);  // API może zwrócić id jako string
+        if (!Number.isInteger(id) || id < 0 || id > ID_TONE_MAX_ID) {
+            // Protocol only carries 4 digits — playing a truncated ID would
+            // silently decode as a WRONG (but valid-looking) session on the
+            // other end, which is worse than not signalling at all.
+            console.warn(`playIdTone: ID ${sessionId} poza zasięgiem protokołu (0-${ID_TONE_MAX_ID}) — nie odtwarzam.`);
+            return;
+        }
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
+        const digits = String(id).padStart(4, '0').split('').map(Number);
+
+        const ctx = new AudioCtx();
+        const osc = ctx.createOscillator();
+        osc.type = 'sine';
+        const gain = ctx.createGain();
+        gain.gain.value = 0.0001;
+        osc.connect(gain).connect(ctx.destination);
+
+        const ramp = 0.015;
+        let t = ctx.currentTime + 0.05;
+        const playTone = (freq, dur) => {
+            const at = t;
+            const offAt = at + dur;
+            gain.gain.setValueAtTime(0.0001, at);
+            gain.gain.exponentialRampToValueAtTime(1.0, at + ramp);
+            osc.frequency.setValueAtTime(freq, at);
+            gain.gain.setValueAtTime(1.0, offAt - ramp);
+            gain.gain.exponentialRampToValueAtTime(0.0001, offAt);
+            t = offAt;
+        };
+
+        osc.start();
+        for (let r = 0; r < ID_TONE_REPEATS; r++) {
+            playTone(ID_TONE_MARKER_FREQ, ID_TONE_TONE_DUR);
+            t += ID_TONE_GAP;
+            for (const d of digits) {
+                playTone(ID_TONE_DIGIT_FREQS[d], ID_TONE_TONE_DUR);
+                t += ID_TONE_GAP;
+            }
+            t += ID_TONE_REPEAT_GAP;
+        }
+        const stopAt = t;
+        osc.stop(stopAt);
+        osc.onended = () => ctx.close();
+    }
+
+    function addIdToneReplayButton(statusEl, sessionId) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'btn btn-outline btn-small btn-id-tone-replay';
+        btn.textContent = '🔊 Zagraj sygnał ID';
+        btn.addEventListener('click', () => playIdTone(sessionId));
+        statusEl.appendChild(btn);
+    }
+
     function buildSavePayload(shots, overrides, includeDate) {
         if (!shots || shots.length === 0) return null;
         const lastShot = shots[shots.length - 1];
@@ -1871,6 +1990,10 @@
             const data = await resp.json();
             if (data.ok) {
                 statusEl.textContent = `Zapisano! ID: #${data.id}`;
+                addIdToneReplayButton(statusEl, data.id);
+                if (elements.inputPlayIdTone.checked) {
+                    playIdTone(data.id);
+                }
             } else {
                 statusEl.classList.add('error');
                 statusEl.textContent = `Błąd: ${data.error?.message || 'nieznany błąd'}`;
@@ -1914,10 +2037,12 @@
     elements.btnSendHistoryToCalc.addEventListener('click', sendHistoryToCalculator);
     elements.btnSaveHistoryToDb.addEventListener('click', saveHistoryToDatabase);
     elements.inputNazwaToru.addEventListener('input', saveNazwaToru);
+    elements.inputPlayIdTone.addEventListener('change', savePlayIdTonePref);
 
     // Initialize
     checkBrowserSupport();
     loadNazwaToru();
+    loadPlayIdTonePref();
     renderCacheCard();
     </script>
 </body>

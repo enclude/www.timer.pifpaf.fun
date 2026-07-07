@@ -136,6 +136,22 @@ Po kliknieciu:
 
 Wynik zapisuje sie z zerami dla trafien A/C/D i wszystkich kar (`hit_factor = 0`). Pelne dane (lista strzalow z czasami i splitami) trafiaja do pola `opis`.
 
+### Sygnal tonowy ID (dla Piro Overlay)
+
+Po zapisie w bazie telefon moze odtworzyc otrzymane ID jako sekwencje tonow (marker +
+4 cyfry, pasmo 5000-7500 Hz) - aplikacja [Piro Overlay](https://github.com/enclude/congenial-octo-memory),
+nakladajaca info o strzalach na wideo, odczytuje ten sygnal z mikrofonu kamery i
+uzupelnia ID sesji automatycznie, bez recznego wpisywania.
+
+- Checkbox **"Zagraj sygnal ID po zapisie"** (karta "Dane do kalkulatora", domyslnie
+  wylaczony, zapamietywany w przegladarce) - gdy zaznaczony, sygnal gra automatycznie
+  zaraz po zapisie.
+- Przycisk **"🔊 Zagraj sygnal ID"** pojawia sie zawsze przy komunikacie "Zapisano!"
+  (obok "Zapisz w bazie", tak przy sesji zywej, jak i historii/cache) - pozwala puscic
+  sygnal jeszcze raz, np. gdy kamera nie nagrywala w danym momencie.
+- Dziala tylko dla ID 0-9999 (limit 4-cyfrowego protokolu) - dla wiekszych ID sygnal
+  nie jest odtwarzany (zamiast odtworzyc ucieta, blednie wygladajaca wartosc).
+
 ### PAR_SETUP
 
 Charakterystyka `75200005-…` (R, W), format: `[start_delay(2), time_limit(2), shot_limit(2)]`

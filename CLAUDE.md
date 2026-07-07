@@ -100,6 +100,27 @@ z JSON `{liczba_strzalow, czas_bazowy, opis, nazwa_toru?, uczestnik?}` i wyświe
 Kary i punktacja są zerowe (tylko czas i liczba strzałów). Funkcje: `saveToDatabase()` (live),
 `saveHistoryToDatabase()` (historia), wspólna logika w `buildSavePayload()` i `postToDatabase()`.
 
+**Sygnał tonowy ID (dla Piro Overlay):** po sukcesie `postToDatabase()` woła
+`addIdToneReplayButton()` (dokłada przycisk "🔊 Zagraj sygnał ID" do statusu zapisu) i — gdy
+checkbox "Zagraj sygnał ID po zapisie" w karcie "Dane do kalkulatora" jest zaznaczony
+(`inputPlayIdTone`, zapamiętywany w `localStorage` pod `sgtimer_play_id_tone`, domyślnie
+WYŁĄCZONY) — od razu odtwarza `playIdTone(data.id)`. Cel: aplikacja Piro Overlay
+(github.com/enclude/congenial-octo-memory — nakładka na wideo ze strzelania) może
+zdekodować ID sesji prosto z mikrofonu kamery, bez ręcznego wpisywania.
+
+Protokół (`playIdTone`, Web Audio, sinus przez `AudioContext`+`OscillatorNode`): marker
+5000 Hz ("tu zaczyna się kod") + 4 tony cyfr, każdy jeden z 10 tonów 5250–7500 Hz (co 250 Hz
+na cyfrę 0–9), 200 ms ton + 50 ms cisza, cała sekwencja powtórzona 2× (odstęp 300 ms) dla
+odporności na zakłócenia. Pasmo wybrane tak, by NIE kolidować z bzyczkiem shot-timera
+(2000–4500 Hz) i zmieścić się pod Nyquistem ekstrakcji audio Piro Overlay (16 kHz →
+8000 Hz) — potwierdzone pomiarem na realnym nagraniu DJI Osmo Nano (brak zauważalnego
+zaniku sygnału do 10 kHz w łańcuchu głośnik telefonu → mikrofon kamery → kompresja wideo).
+ID > 9999 (poza zasięgiem 4 cyfr protokołu) NIE jest odtwarzane — `playIdTone` woli nic nie
+zagrać niż zagrać ucięte (błędne) ID, które druga strona zdekodowałaby jako pozornie
+prawidłowe. **DEKODER (osobne repo, `audio_sync.decode_id_tone` w piro-overlay) MUSI
+używać identycznych częstotliwości/czasów** — zmiana stałych `ID_TONE_*` tutaj wymaga
+zmiany odpowiadających `_ID_TONE_*` tam.
+
 ## Konwencje
 
 - Język interfejsu: **polski**
