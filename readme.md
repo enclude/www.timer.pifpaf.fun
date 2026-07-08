@@ -163,7 +163,7 @@ Charakterystyka `75200005-…` (R, W), format: `[start_delay(2), time_limit(2), 
 | `time_limit` | jednostki 0.1s | `0x0000` = bez limitu czasu |
 | `shot_limit` | liczba strzalow | `0x0000` = bez limitu strzalow |
 
-Przycisk "Start" zapisuje PAR z zerowym opoznieniem, przycisk "Start z opoznieniem" z losowym opoznieniem 1.0–3.0s (losowanym w JS). W obu przypadkach `time_limit` i `shot_limit` pochodza z karty "Ustawienia PAR" (0 = bez limitu). Przycisk "Zapisz PAR w timerze" zapisuje same limity, zachowujac `start_delay` odczytany z urzadzenia. Po zapisie PAR_SETUP wymagane jest oddzielne wyslanie komendy SESSION_START.
+Przycisk "Start" zapisuje PAR z zerowym opoznieniem, przycisk "Start z opoznieniem" z losowym opoznieniem 1.0–3.0s (losowanym w JS). W obu przypadkach `time_limit` i `shot_limit` pochodza z karty "Ustawienia PAR" (0 = bez limitu). Przycisk "Zapisz PAR w timerze" zapisuje same limity, zachowujac `start_delay` odczytany z urzadzenia. Przycisk "Zresetuj PAR" zeruje oba pola i zapisuje 0/0 do timera (usuwa limity). Po zapisie PAR_SETUP wymagane jest oddzielne wyslanie komendy SESSION_START.
 
 ### Wersjonowanie
 

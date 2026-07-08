@@ -71,6 +71,8 @@ max 6553.4) i **limit strzałów** (max 65534); 0 = bez limitu. Wartości pamię
 przeglądarka (`localStorage`, klucz `sgtimer_par_setup`). Limity są zapisywane do timera:
 - przyciskiem "Zapisz PAR w timerze" (`writeParToTimer()`) — `start_delay` jest wcześniej
   odczytywany z urządzenia i zachowywany (PAR_SETUP to jedna 6-bajtowa ramka),
+- przyciskiem "Zresetuj PAR" (`resetParOnTimer()`) — zeruje OBA pola karty (i localStorage)
+  i od razu zapisuje 0/0 do timera, żeby limitu nie przywrócił też następny start,
 - automatycznie przy **każdym** starcie ze strony (`startNow()` delay=0,
   `startWithRandomDelay()` delay losowy) — `buildParBytes(delayTenths)` dokleja limity
   z pól karty zamiast dawnych zer.

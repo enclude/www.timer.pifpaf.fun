@@ -582,6 +582,7 @@
             </div>
             <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px;">
                 <button id="btnWritePar" class="btn btn-outline">Zapisz PAR w timerze</button>
+                <button id="btnResetPar" class="btn btn-outline">Zresetuj PAR</button>
                 <span id="parStatus" style="font-size: 0.85rem; color: var(--text-secondary);"></span>
             </div>
             <p style="margin-top: 10px; font-size: 0.8rem; color: var(--text-secondary);">
@@ -940,6 +941,7 @@
         inputParTime: document.getElementById('inputParTime'),
         inputParShots: document.getElementById('inputParShots'),
         btnWritePar: document.getElementById('btnWritePar'),
+        btnResetPar: document.getElementById('btnResetPar'),
         parStatus: document.getElementById('parStatus')
     };
 
@@ -1065,6 +1067,7 @@
             return;
         }
         elements.btnWritePar.disabled = true;
+        elements.btnResetPar.disabled = true;
         try {
             let delayHi = 0x00, delayLo = 0x00;
             try {
@@ -1090,7 +1093,17 @@
             alert('Blad zapisu PAR: ' + error.message);
         } finally {
             elements.btnWritePar.disabled = false;
+            elements.btnResetPar.disabled = false;
         }
+    }
+
+    // Remove the PAR limits: zero both inputs and write 0/0 to the device,
+    // so neither the timer nor the next start carries any limit
+    async function resetParOnTimer() {
+        elements.inputParTime.value = 0;
+        elements.inputParShots.value = 0;
+        saveParSetup();
+        await writeParToTimer();
     }
 
     // Session cache (localStorage) — sessions from the last 24h with full
@@ -2288,6 +2301,7 @@
     elements.inputParTime.addEventListener('input', saveParSetup);
     elements.inputParShots.addEventListener('input', saveParSetup);
     elements.btnWritePar.addEventListener('click', writeParToTimer);
+    elements.btnResetPar.addEventListener('click', resetParOnTimer);
 
     // Initialize
     checkBrowserSupport();
