@@ -1891,20 +1891,30 @@
 
     // ID tone signalling — lets Piro Overlay decode the saved session ID
     // straight from the camera's audio track (no manual typing on import).
-    // Protocol MUST match piro_overlay.audio_sync.decode_id_tone exactly:
-    // marker 5000 Hz ("code starts here") + 4 digit tones, one of 10
-    // frequencies 5250-7500 Hz (step 250 Hz) per digit 0-9, 200ms tone +
-    // 50ms gap each, whole sequence repeated twice for redundancy. Band
-    // chosen to sit above the shot-timer buzzer band (2000-4500 Hz) and
-    // below the Nyquist of Piro Overlay's 16kHz audio extraction (8kHz) —
-    // verified against a real DJI Osmo Nano recording (no rolloff to 10kHz).
+    // Protocol v2 — MUST match piro_overlay.audio_sync.decode_id_tone (and
+    // id_tone.js in the calculator) exactly: marker 5000 Hz ("code starts
+    // here") + 4 digit tones + 1 checksum tone (position-weighted sum mod 10,
+    // see idToneChecksum), one of 10 frequencies 5200-7000 Hz (step 200 Hz)
+    // per digit 0-9, 300ms tone + 50ms gap each, whole sequence repeated
+    // twice for redundancy. Band sits above the shot-timer buzzer band
+    // (2000-4500 Hz) and below the Nyquist of Piro Overlay's 16kHz audio
+    // extraction (8kHz). v2 rationale (measured on a real DJI recording of a
+    // distant phone): tones >7kHz faded in the speaker->mic->AAC chain, so
+    // the band top dropped from 7500 Hz; longer tones survive AAC eating the
+    // quiet tail; the checksum lets the decoder reject a misread instead of
+    // fetching someone else's session. NOT backward compatible with v1.
     const ID_TONE_MARKER_FREQ = 5000;
-    const ID_TONE_DIGIT_FREQS = Array.from({ length: 10 }, (_, d) => 5250 + d * 250);
-    const ID_TONE_TONE_DUR = 0.20;
+    const ID_TONE_DIGIT_FREQS = Array.from({ length: 10 }, (_, d) => 5200 + d * 200);
+    const ID_TONE_TONE_DUR = 0.30;
     const ID_TONE_GAP = 0.05;
     const ID_TONE_REPEATS = 2;
     const ID_TONE_REPEAT_GAP = 0.3;
     const ID_TONE_MAX_ID = 9999;
+
+    // MUST match piro_overlay.audio_sync._id_tone_checksum.
+    function idToneChecksum(digits) {
+        return digits.reduce((acc, d, i) => acc + (i + 1) * d, 0) % 10;
+    }
 
     function playIdTone(sessionId) {
         const id = Number(sessionId);  // API może zwrócić id jako string
@@ -1918,6 +1928,7 @@
         const AudioCtx = window.AudioContext || window.webkitAudioContext;
         if (!AudioCtx) return;
         const digits = String(id).padStart(4, '0').split('').map(Number);
+        digits.push(idToneChecksum(digits));
 
         const ctx = new AudioCtx();
         const osc = ctx.createOscillator();

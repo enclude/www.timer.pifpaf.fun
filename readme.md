@@ -139,7 +139,7 @@ Wynik zapisuje sie z zerami dla trafien A/C/D i wszystkich kar (`hit_factor = 0`
 ### Sygnal tonowy ID (dla Piro Overlay)
 
 Po zapisie w bazie telefon moze odtworzyc otrzymane ID jako sekwencje tonow (marker +
-4 cyfry, pasmo 5000-7500 Hz) - aplikacja [Piro Overlay](https://github.com/enclude/congenial-octo-memory),
+4 cyfry + cyfra kontrolna, pasmo 5000-7000 Hz) - aplikacja [Piro Overlay](https://github.com/enclude/congenial-octo-memory),
 nakladajaca info o strzalach na wideo, odczytuje ten sygnal z mikrofonu kamery i
 uzupelnia ID sesji automatycznie, bez recznego wpisywania.
 

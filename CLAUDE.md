@@ -116,13 +116,17 @@ WYŁĄCZONY) — od razu odtwarza `playIdTone(data.id)`. Cel: aplikacja Piro Ove
 (github.com/enclude/congenial-octo-memory — nakładka na wideo ze strzelania) może
 zdekodować ID sesji prosto z mikrofonu kamery, bez ręcznego wpisywania.
 
-Protokół (`playIdTone`, Web Audio, sinus przez `AudioContext`+`OscillatorNode`): marker
-5000 Hz ("tu zaczyna się kod") + 4 tony cyfr, każdy jeden z 10 tonów 5250–7500 Hz (co 250 Hz
-na cyfrę 0–9), 200 ms ton + 50 ms cisza, cała sekwencja powtórzona 2× (odstęp 300 ms) dla
+Protokół v2 (`playIdTone`, Web Audio, sinus przez `AudioContext`+`OscillatorNode`): marker
+5000 Hz ("tu zaczyna się kod") + 4 tony cyfr + ton cyfry kontrolnej (`idToneChecksum` =
+suma ważona pozycją 1–4 mod 10), każdy jeden z 10 tonów 5200–7000 Hz (co 200 Hz na cyfrę
+0–9), 300 ms ton + 50 ms cisza, cała sekwencja powtórzona 2× (odstęp 300 ms) dla
 odporności na zakłócenia. Pasmo wybrane tak, by NIE kolidować z bzyczkiem shot-timera
 (2000–4500 Hz) i zmieścić się pod Nyquistem ekstrakcji audio Piro Overlay (16 kHz →
-8000 Hz) — potwierdzone pomiarem na realnym nagraniu DJI Osmo Nano (brak zauważalnego
-zaniku sygnału do 10 kHz w łańcuchu głośnik telefonu → mikrofon kamery → kompresja wideo).
+8000 Hz). Zmiany v2 względem v1 (5250–7500 Hz co 250 Hz, 200 ms, bez checksumy; BEZ
+kompatybilności wstecznej) wynikają z pomiaru realnego nagrania DJI z odległym telefonem:
+tony >7 kHz zanikały w łańcuchu głośnik → mikrofon → AAC (stąd niższy sufit pasma),
+dłuższy ton przeżywa zjadanie ogona przez AAC, a cyfra kontrolna pozwala dekoderowi
+odrzucić błędny odczyt zamiast pobrać cudzą sesję.
 ID > 9999 (poza zasięgiem 4 cyfr protokołu) NIE jest odtwarzane — `playIdTone` woli nic nie
 zagrać niż zagrać ucięte (błędne) ID, które druga strona zdekodowałaby jako pozornie
 prawidłowe. **DEKODER (osobne repo, `audio_sync.decode_id_tone` w piro-overlay) MUSI

@@ -3,7 +3,9 @@
     "allow": [
       "Bash(git add *)",
       "Bash(git commit -m ' *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(curl -s https://timer.pifpaf.fun/?nocache=__TRACKED_VAR__)",
+      "Bash(curl -s \"https://timer.pifpaf.fun/version.php\")"
     ]
   }
 }
