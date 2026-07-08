@@ -100,6 +100,14 @@ z JSON `{liczba_strzalow, czas_bazowy, opis, nazwa_toru?, uczestnik?}` i wyświe
 Kary i punktacja są zerowe (tylko czas i liczba strzałów). Funkcje: `saveToDatabase()` (live),
 `saveHistoryToDatabase()` (historia), wspólna logika w `buildSavePayload()` i `postToDatabase()`.
 
+**Edycja wpisu po zapisie:** `api_save.php` zwraca też `edit_token` (token uprawniający do edycji
+WYŁĄCZNIE tego jednego wpisu). Po sukcesie zapisu `postToDatabase()` dokłada obok "🔊 Zagraj sygnał ID"
+link "✏️ Edytuj wpis w bazie" (`addDbEditLinkButton()`) prowadzący do
+`https://piro-kalkulator.pifpaf.fun/edit.php?edit=<id>&token=<edit_token>` (nowa karta) — otwiera
+formularz edycji tego wpisu w kalkulatorze (przeliczenie punktów A/C/D/kar), bez znajomości
+głównego klucza edycji kalkulatora. Link działa tylko dla danego wpisu; token jest w kolumnie
+`edit_token` bazy kalkulatora.
+
 **Sygnał tonowy ID (dla Piro Overlay):** po sukcesie `postToDatabase()` woła
 `addIdToneReplayButton()` (dokłada przycisk "🔊 Zagraj sygnał ID" do statusu zapisu) i — gdy
 checkbox "Zagraj sygnał ID po zapisie" w karcie "Dane do kalkulatora" jest zaznaczony

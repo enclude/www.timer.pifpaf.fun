@@ -271,6 +271,11 @@
             margin: 6px 0 0 auto;
         }
 
+        .btn-db-edit-link {
+            margin: 6px 0 0 8px;
+            text-decoration: none;
+        }
+
         .session-list {
             list-style: none;
             max-height: 300px;
@@ -1882,6 +1887,7 @@
     }
 
     const KALKULATOR_SAVE_URL = 'https://piro-kalkulator.pifpaf.fun/api_save.php';
+    const KALKULATOR_EDIT_URL = 'https://piro-kalkulator.pifpaf.fun/edit.php';
 
     // ID tone signalling — lets Piro Overlay decode the saved session ID
     // straight from the camera's audio track (no manual typing on import).
@@ -1957,6 +1963,19 @@
         statusEl.appendChild(btn);
     }
 
+    // Link to the calculator's edit form for this entry — the per-entry
+    // edit_token from api_save.php grants access to that one entry only
+    // (the master edit key never leaves the calculator).
+    function addDbEditLinkButton(statusEl, entryId, editToken) {
+        const link = document.createElement('a');
+        link.className = 'btn btn-outline btn-small btn-db-edit-link';
+        link.textContent = '✏️ Edytuj wpis w bazie';
+        link.href = `${KALKULATOR_EDIT_URL}?edit=${encodeURIComponent(entryId)}&token=${encodeURIComponent(editToken)}`;
+        link.target = '_blank';
+        link.rel = 'noopener';
+        statusEl.appendChild(link);
+    }
+
     function buildSavePayload(shots, overrides, includeDate) {
         if (!shots || shots.length === 0) return null;
         const lastShot = shots[shots.length - 1];
@@ -2001,6 +2020,9 @@
             if (data.ok) {
                 statusEl.textContent = `Zapisano! ID: #${data.id}`;
                 addIdToneReplayButton(statusEl, data.id);
+                if (data.edit_token) {
+                    addDbEditLinkButton(statusEl, data.id, data.edit_token);
+                }
                 if (elements.inputPlayIdTone.checked) {
                     playIdTone(data.id);
                 }
