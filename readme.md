@@ -164,11 +164,12 @@ Charakterystyka `75200005-…` (R, W), format: `[start_delay(2), time_limit(2), 
 
 Przycisk "Start" zapisuje `[0x00,0x00,0x00,0x00,0x00,0x00]` (zerowe opoznienie), przycisk "Start z opoznieniem" zapisuje `[0xFF,0xFF,0x00,0x00,0x00,0x00]` (losowe 1–4s). Po zapisie PAR_SETUP wymagane jest oddzielne wyslanie komendy SESSION_START.
 
-### Wersjonowanie (CI/CD)
+### Wersjonowanie
 
-GitHub Actions (`version.yml`) generuje `version.php` przy kazdym pushu na `main`.
-Stopka wyswietla hash commitu jako klikalny link do GitHub oraz date. Lokalnie
-(`APP_COMMIT_HASH = 'dev'`) wersja nie jest wyswietlana.
+Stopka czyta wersje bezposrednio z katalogu `.git` (serwer jest wdrazany przez `git pull`
+w cronie): hash commitu z `HEAD`/refs jako klikalny link do GitHub oraz date wdrozenia
+(`filemtime` refa). Dostep HTTP do `.git` jest zablokowany w `.htaccess`. Gdy katalogu
+`.git` brak, wersja nie jest wyswietlana.
 
 ### Testowane urzadzenia
 

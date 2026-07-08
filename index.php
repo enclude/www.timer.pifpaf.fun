@@ -755,17 +755,46 @@
             Kompatybilny z SG Timer Sport i SG Timer GO (BLE API 3.2)
         </p>
         <?php
-        if (file_exists(__DIR__ . '/version.php')) {
-            include_once __DIR__ . '/version.php';
-            if (defined('APP_COMMIT_HASH') && APP_COMMIT_HASH !== 'dev') {
-                $date = APP_COMMIT_DATE
-                    ? date('d.m.Y H:i', strtotime(APP_COMMIT_DATE))
-                    : '';
-                echo '<p style="margin-top: 4px; font-size: 0.75rem; opacity: 0.6;">';
-                echo 'wersja: <a href="' . APP_COMMIT_URL . '" target="_blank" style="color:inherit;">' . APP_COMMIT_HASH . '</a>';
-                if ($date) echo ' &middot; ' . $date;
-                echo '</p>';
+        // Version read straight from .git (server is deployed via cron git pull),
+        // so the footer always shows the commit that is actually live.
+        function appVersion() {
+            $gitDir = __DIR__ . '/.git';
+            $head = @file_get_contents($gitDir . '/HEAD');
+            if ($head === false) return null;
+            $head = trim($head);
+            $hash = '';
+            $deployedAt = false;
+            if (strpos($head, 'ref:') === 0) {
+                $refName = trim(substr($head, 4));
+                $refPath = $gitDir . '/' . $refName;
+                $ref = @file_get_contents($refPath);
+                if ($ref !== false) {
+                    $hash = trim($ref);
+                    $deployedAt = @filemtime($refPath);
+                } else {
+                    // Ref may be packed (after git gc)
+                    $packed = @file_get_contents($gitDir . '/packed-refs');
+                    if ($packed !== false
+                        && preg_match('/^([0-9a-f]{40})\s+' . preg_quote($refName, '/') . '$/m', $packed, $m)) {
+                        $hash = $m[1];
+                    }
+                }
+            } else {
+                $hash = $head; // detached HEAD
+                $deployedAt = @filemtime($gitDir . '/HEAD');
             }
+            if (!preg_match('/^[0-9a-f]{40}$/', $hash)) return null;
+            return ['hash' => $hash, 'deployedAt' => $deployedAt];
+        }
+        $ver = appVersion();
+        if ($ver) {
+            echo '<p style="margin-top: 4px; font-size: 0.75rem; opacity: 0.6;">';
+            echo 'wersja: <a href="https://github.com/enclude/www.timer.pifpaf.fun/commit/' . $ver['hash']
+                . '" target="_blank" style="color:inherit;">' . substr($ver['hash'], 0, 7) . '</a>';
+            if ($ver['deployedAt']) {
+                echo ' &middot; wdro&#380;ono ' . date('d.m.Y H:i', $ver['deployedAt']);
+            }
+            echo '</p>';
         }
         ?>
     </footer>

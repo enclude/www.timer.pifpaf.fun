@@ -11,19 +11,19 @@ GitHub: [github.com/enclude/www.timer.pifpaf.fun](https://github.com/enclude/www
 
 ```
 index.php                           # Główny plik aplikacji (HTML + CSS + JS + PHP)
-version.php                         # Generowany przez CI (hash + data commitu); placeholder: 'dev'
 readme.md                           # Dokumentacja projektu (po polsku)
 docs/sg_timer_public_bt_api-32.pdf  # Dokumentacja BLE API (hasłem chroniona)
 docs/sg_timer_public_bt_api-32.png/ # Strony PDF jako PNG (czytelne)
 screenshots/20260225/               # Screenshoty z testów z 25.02.2026
 screenshots/20260226/               # Screenshoty z testów z 26.02.2026
-.github/workflows/version.yml       # GitHub Actions: generuje version.php przy każdym pushu na main
 ```
 
 ## Architektura
 
 Aplikacja to **single-file PHP/HTML/CSS/JS** — cała logika znajduje się w `index.php`:
-- **PHP** — rok w stopce + wczytanie `version.php` (hash commitu)
+- **PHP** — rok w stopce + wersja z `.git` (funkcja `appVersion()`: hash z `HEAD`/refs/packed-refs,
+  data wdrożenia z `filemtime` refa; deploy = cron `git pull` na serwerze, `.htaccess` blokuje
+  dostęp HTTP do `.git`; brak `.git` = brak wersji w stopce, np. lokalnie)
 - **HTML/CSS** — interfejs użytkownika
 - **JavaScript** — cała logika Bluetooth i obsługa UI
 
