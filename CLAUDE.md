@@ -53,7 +53,7 @@ Prefix nazwy urządzenia: `SG-SST4`
 - Warunek braku splitu dla pierwszego strzału: `shotNum === 0` (nie `=== 1`)
 - Sesja wysyła łączną liczbę strzałów w `SESSION_STOPPED` — wartość zgodna z rzeczywistością
 - Zapisane sesje: ID sesji = Unix timestamp urządzenia (czas lokalny)
-- PAR_SETUP (`75200005-…`): 3×2 bajty `[start_delay(2), time_limit(2), shot_limit(2)]`, wartości w jednostkach 0.1s; `start_delay=0xFFFF` = losowe 1–4s; `start_delay=0x0000` = natychmiastowy start; `time_limit=0` i `shot_limit=0` = bez limitu
+- PAR_SETUP (`75200005-…`): 3×2 bajty `[start_delay(2), time_limit(2), shot_limit(2)]`, czasy w jednostkach 0.1s, shot_limit = liczba strzałów; `start_delay=0xFFFF` = losowe 1–4s; `start_delay=0x0000` = natychmiastowy start; `time_limit=0` i `shot_limit=0` = bez limitu
 - Sentinel końca listy sesji/strzałów = `0xFFFFFFFF` — `parseBigEndian` musi zwracać unsigned (`>>> 0`), inaczej porównanie `=== 0xFFFFFFFF` nigdy nie jest spełnione
 - `formatDate` używa `timeZone: 'UTC'` — urządzenie zapisuje czas lokalny jako timestamp (bez strefy), bez `UTC` przeglądarka dodaje kolejne +1h
 - `SESSION_SET_BEGIN` (0x05) — wysyłane gdy mija opóźnienie PAR i faktyczny pomiar się zaczyna
@@ -62,6 +62,26 @@ Prefix nazwy urządzenia: `SG-SST4`
 - SHOT_LIST read: `[shot_number(2), shot_time(4)]` — 6 bajtów łącznie; sentinel w polu shot_time
 - SAVED_SESSION_ID_LIST: zapis `0xFFFFFFFF` → start od najnowszej; odczyty od najnowszej do najstarszej
 - Web Bluetooth dopuszcza **tylko jedną operację GATT naraz** na urządzenie — równoległe `readValue`/`writeValue` kończą się błędem `GATT operation failed for unknown reason`; wszystkie operacje GATT muszą iść przez kolejkę `gattExec()`, a sekwencje kursorowe (sessionList/shotList) nie mogą się przeplatać (`stopMetadataLoad()` + `shotsLoadToken`)
+
+## Ustawienia PAR (limit czasu / limit strzałów)
+
+Karta "Ustawienia PAR" (`parCard`, widoczna po połączeniu — tylko gdy charakterystyka
+PAR_SETUP jest dostępna) pozwala ustawić **czas maksymalny** (s, jednostki 0.1s na drucie,
+max 6553.4) i **limit strzałów** (max 65534); 0 = bez limitu. Wartości pamiętane per
+przeglądarka (`localStorage`, klucz `sgtimer_par_setup`). Limity są zapisywane do timera:
+- przyciskiem "Zapisz PAR w timerze" (`writeParToTimer()`) — `start_delay` jest wcześniej
+  odczytywany z urządzenia i zachowywany (PAR_SETUP to jedna 6-bajtowa ramka),
+- automatycznie przy **każdym** starcie ze strony (`startNow()` delay=0,
+  `startWithRandomDelay()` delay losowy) — `buildParBytes(delayTenths)` dokleja limity
+  z pól karty zamiast dawnych zer.
+
+`lastWrittenPar` = limity aktualnie NA URZĄDZENIU (odczyt przy połączeniu w
+`readParFromTimer()` + po każdym zapisie; zerowane przy rozłączeniu). Przy
+`SESSION_STARTED` kopiowane do `currentSession.parTime/parShots`, stamtąd do cache
+(`parTime`/`parShots` przy wpisie sesji, przenoszone przez `applyCachedLabels()`)
+i do payloadu zapisu w bazie (`par_time_limit` [s, float] / `par_shot_limit` [int],
+dokładane tylko gdy > 0). **Celowo NIE trafiają do `opis`** — Piro Overlay parsuje
+z opisu oś czasu strzałów i format opisu musi zostać bez zmian.
 
 ## Cache sesji (localStorage)
 
@@ -99,8 +119,8 @@ Nazwa toru jest pamietana per przegladarka w `localStorage` (klucz `sgtimer_nazw
 uczestnik nie jest pamietany.
 
 Przyciski "Zapisz w bazie" wysyłają POST na `https://piro-kalkulator.pifpaf.fun/api_save.php`
-z JSON `{liczba_strzalow, czas_bazowy, opis, nazwa_toru?, uczestnik?, timer_sn?, sess_id?}`
-i wyświetlają zwrócone ID wpisu.
+z JSON `{liczba_strzalow, czas_bazowy, opis, nazwa_toru?, uczestnik?, timer_sn?, sess_id?,
+par_time_limit?, par_shot_limit?}` i wyświetlają zwrócone ID wpisu.
 Kary i punktacja są zerowe (tylko czas i liczba strzałów). Funkcje: `saveToDatabase()` (live),
 `saveHistoryToDatabase()` (historia), wspólna logika w `buildSavePayload()` i `postToDatabase()`.
 `timer_sn` = numer seryjny timera (nazwa urządzenia BLE, zmienna `deviceSerial` ustawiana przy

@@ -567,6 +567,29 @@
             </label>
         </div>
 
+        <!-- PAR settings: time limit + shot limit written to the timer (PAR_SETUP) -->
+        <div id="parCard" class="card hidden">
+            <h2>Ustawienia PAR</h2>
+            <div class="calc-fields">
+                <div class="field-group">
+                    <label for="inputParTime">Czas maksymalny [s] (0 = bez limitu)</label>
+                    <input type="number" id="inputParTime" min="0" max="6553.4" step="0.1" value="0">
+                </div>
+                <div class="field-group">
+                    <label for="inputParShots">Limit strzalow (0 = bez limitu)</label>
+                    <input type="number" id="inputParShots" min="0" max="65534" step="1" value="0">
+                </div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px;">
+                <button id="btnWritePar" class="btn btn-outline">Zapisz PAR w timerze</button>
+                <span id="parStatus" style="font-size: 0.85rem; color: var(--text-secondary);"></span>
+            </div>
+            <p style="margin-top: 10px; font-size: 0.8rem; color: var(--text-secondary);">
+                Limity sa zapisywane do timera przyciskiem powyzej oraz automatycznie przy kazdym
+                starcie z tej strony. Timer zakonczy sesje po osiagnieciu limitu czasu lub strzalow.
+            </p>
+        </div>
+
         <!-- Live Session Display -->
         <div id="liveSection" class="hidden">
             <div class="live-display">
@@ -839,6 +862,9 @@
     // BLE device name doubles as the timer serial number (e.g. SG-SST4B00000);
     // kept across disconnects so cache-based saves can still attribute the device
     let deviceSerial = '';
+    // PAR limits currently stored ON THE DEVICE (from last read/write this
+    // connection) — the inputs may differ until the next write
+    let lastWrittenPar = null;
     let metadataAborted = false;
     let metadataTask = Promise.resolve();
     let shotsLoadToken = 0;
@@ -909,7 +935,12 @@
         calcDataCard: document.getElementById('calcDataCard'),
         inputNazwaToru: document.getElementById('inputNazwaToru'),
         inputUczestnik: document.getElementById('inputUczestnik'),
-        inputPlayIdTone: document.getElementById('inputPlayIdTone')
+        inputPlayIdTone: document.getElementById('inputPlayIdTone'),
+        parCard: document.getElementById('parCard'),
+        inputParTime: document.getElementById('inputParTime'),
+        inputParShots: document.getElementById('inputParShots'),
+        btnWritePar: document.getElementById('btnWritePar'),
+        parStatus: document.getElementById('parStatus')
     };
 
     // Persist stage name per browser (localStorage), expires 8h after last use
@@ -958,6 +989,107 @@
             localStorage.setItem(STORAGE_KEY_PLAY_ID_TONE, elements.inputPlayIdTone.checked ? '1' : '0');
         } catch (e) {
             console.warn('localStorage unavailable:', e);
+        }
+    }
+
+    // Persist PAR limits (time limit / shot limit) per browser (localStorage)
+    const STORAGE_KEY_PAR_SETUP = 'sgtimer_par_setup';
+
+    function loadParSetup() {
+        try {
+            const raw = localStorage.getItem(STORAGE_KEY_PAR_SETUP);
+            if (!raw) return;
+            const { time, shots } = JSON.parse(raw);
+            if (typeof time === 'number' && time >= 0) elements.inputParTime.value = time;
+            if (typeof shots === 'number' && shots >= 0) elements.inputParShots.value = shots;
+        } catch (e) {
+            console.warn('localStorage unavailable:', e);
+        }
+    }
+
+    function saveParSetup() {
+        try {
+            const { timeS, shotLimit } = getParLimits();
+            localStorage.setItem(STORAGE_KEY_PAR_SETUP, JSON.stringify({ time: timeS, shots: shotLimit }));
+        } catch (e) {
+            console.warn('localStorage unavailable:', e);
+        }
+    }
+
+    // Read and clamp the PAR limit inputs; time goes on the wire in 0.1s units
+    // (2 bytes, capped below the 0xFFFF sentinel range)
+    function getParLimits() {
+        const timeTenths = Math.min(0xFFFE, Math.max(0, Math.round((parseFloat(elements.inputParTime.value) || 0) * 10)));
+        const shotLimit = Math.min(0xFFFE, Math.max(0, parseInt(elements.inputParShots.value, 10) || 0));
+        return { timeTenths, timeS: timeTenths / 10, shotLimit };
+    }
+
+    // Build the 6-byte PAR_SETUP frame [start_delay(2), time_limit(2), shot_limit(2)]
+    // (big-endian) with the limits taken from the PAR card inputs
+    function buildParBytes(delayTenths) {
+        const { timeTenths, shotLimit } = getParLimits();
+        return new Uint8Array([
+            (delayTenths >> 8) & 0xFF, delayTenths & 0xFF,
+            (timeTenths >> 8) & 0xFF, timeTenths & 0xFF,
+            (shotLimit >> 8) & 0xFF, shotLimit & 0xFF
+        ]);
+    }
+
+    function updateParStatus(timeS, shotLimit) {
+        const timeStr = timeS > 0 ? `${timeS.toFixed(1)}s` : 'brak';
+        const shotsStr = shotLimit > 0 ? shotLimit : 'brak';
+        elements.parStatus.textContent = `W timerze: limit czasu ${timeStr} · limit strzalow ${shotsStr}`;
+    }
+
+    // Show the PAR limits currently stored on the device (read on connect)
+    async function readParFromTimer() {
+        if (!characteristics.parSetup) return;
+        try {
+            const value = await gattExec(() => characteristics.parSetup.readValue());
+            if (value.byteLength < 6) return;
+            const time = parseBigEndian(value, 2, 2) / 10;
+            const shots = parseBigEndian(value, 4, 2);
+            lastWrittenPar = { time, shots };
+            updateParStatus(time, shots);
+        } catch (e) {
+            console.warn('PAR_SETUP read failed:', e);
+        }
+    }
+
+    // Write the PAR limits to the device without starting a session.
+    // PAR_SETUP is a single 6-byte frame, so start_delay is read back first
+    // and preserved (falling back to 0 when the read fails).
+    async function writeParToTimer() {
+        if (!characteristics.parSetup) {
+            alert('PAR_SETUP niedostepny na tym urzadzeniu.');
+            return;
+        }
+        elements.btnWritePar.disabled = true;
+        try {
+            let delayHi = 0x00, delayLo = 0x00;
+            try {
+                const cur = await gattExec(() => characteristics.parSetup.readValue());
+                if (cur.byteLength >= 2) {
+                    delayHi = cur.getUint8(0);
+                    delayLo = cur.getUint8(1);
+                }
+            } catch (e) {
+                console.warn('PAR_SETUP read failed, keeping zero start delay:', e);
+            }
+            const { timeTenths, timeS, shotLimit } = getParLimits();
+            const parData = new Uint8Array([
+                delayHi, delayLo,
+                (timeTenths >> 8) & 0xFF, timeTenths & 0xFF,
+                (shotLimit >> 8) & 0xFF, shotLimit & 0xFF
+            ]);
+            await gattExec(() => characteristics.parSetup.writeValue(parData));
+            lastWrittenPar = { time: timeS, shots: shotLimit };
+            updateParStatus(timeS, shotLimit);
+        } catch (error) {
+            console.error('PAR_SETUP write failed:', error);
+            alert('Blad zapisu PAR: ' + error.message);
+        } finally {
+            elements.btnWritePar.disabled = false;
         }
     }
 
@@ -1069,7 +1201,7 @@
 
     // Auto-save a finished live session into the cache — only when both
     // stage name and participant are filled in "Dane do kalkulatora"
-    function saveLiveSessionToCache(sessId, shots, startDelay) {
+    function saveLiveSessionToCache(sessId, shots, startDelay, parTime, parShots) {
         const nazwaToru = elements.inputNazwaToru.value.trim();
         const uczestnik = elements.inputUczestnik.value.trim();
         if (!nazwaToru || !uczestnik || !sessId || shots.length === 0) return false;
@@ -1082,6 +1214,8 @@
             uczestnik
         };
         if (typeof startDelay === 'number') entry.startDelay = startDelay;
+        if (parTime > 0) entry.parTime = parTime;
+        if (parShots > 0) entry.parShots = parShots;
         if (deviceSerial) entry.timerSn = deviceSerial;
         const idx = cache.sessions.findIndex(s => s.sessId === sessId);
         if (idx >= 0) {
@@ -1109,6 +1243,8 @@
                 if (old.nazwaToru) s.nazwaToru = old.nazwaToru;
                 if (old.uczestnik) s.uczestnik = old.uczestnik;
                 if (typeof old.startDelay === 'number') s.startDelay = old.startDelay;
+                if (typeof old.parTime === 'number') s.parTime = old.parTime;
+                if (typeof old.parShots === 'number') s.parShots = old.parShots;
                 if (old.timerSn && !s.timerSn) s.timerSn = old.timerSn;
             }
         });
@@ -1241,12 +1377,16 @@
             elements.calcDataCard.classList.remove('hidden');
             elements.liveSection.classList.remove('hidden');
             elements.sessionsCard.classList.remove('hidden');
+            if (characteristics.parSetup) {
+                elements.parCard.classList.remove('hidden');
+            }
 
             // Read device info (device name doubles as the timer serial number)
             deviceSerial = device.name || '';
             elements.deviceName.textContent = device.name || 'Nieznane';
             await readApiVersion();
             await readDeviceTime();
+            await readParFromTimer();
 
             console.log('Connected to', device.name);
 
@@ -1280,12 +1420,15 @@
         elements.sessionsCard.classList.add('hidden');
         elements.shotsCard.classList.add('hidden');
         elements.liveShotsCard.classList.add('hidden');
+        elements.parCard.classList.add('hidden');
+        elements.parStatus.textContent = '';
 
         device = null;
         server = null;
         service = null;
         characteristics = {};
         currentSession = { id: null, active: false, shots: [], lastShotTime: 0 };
+        lastWrittenPar = null;
 
         // Stop background loaders — characteristics are gone
         metadataAborted = true;
@@ -1389,7 +1532,10 @@
             active: true,
             shots: [],
             lastShotTime: 0,
-            startDelay: startDelay
+            startDelay: startDelay,
+            // PAR limits stored on the device when this session began
+            parTime: lastWrittenPar ? lastWrittenPar.time : 0,
+            parShots: lastWrittenPar ? lastWrittenPar.shots : 0
         };
 
         elements.sessionStatus.textContent = `Sesja rozpoczeta (opoznienie: ${startDelay}s)`;
@@ -1452,7 +1598,8 @@
         }
 
         // Auto-cache the finished session when tor + uczestnik are filled in
-        if (saveLiveSessionToCache(sessId, currentSession.shots, currentSession.startDelay)) {
+        if (saveLiveSessionToCache(sessId, currentSession.shots, currentSession.startDelay,
+                currentSession.parTime, currentSession.parShots)) {
             elements.sessionStatus.textContent += ' · zapisano w cache';
         }
 
@@ -1496,12 +1643,15 @@
     }
 
     // Start session immediately (zero delay) via PAR_SETUP (API 1.5)
-    // start_delay=0x0000 = immediate start, time_limit=0 (unlimited), shot_limit=0 (unlimited)
+    // start_delay=0x0000 = immediate start; time/shot limits come from the PAR card
     async function startNow() {
         if (characteristics.parSetup) {
             try {
-                const parData = new Uint8Array([0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+                const parData = buildParBytes(0);
                 await gattExec(() => characteristics.parSetup.writeValue(parData));
+                const { timeS, shotLimit } = getParLimits();
+                lastWrittenPar = { time: timeS, shots: shotLimit };
+                updateParStatus(timeS, shotLimit);
             } catch (error) {
                 console.warn('PAR_SETUP write failed, starting without reset:', error);
             }
@@ -1511,7 +1661,7 @@
 
     // Start session with random delay 1.0–3.0s via PAR_SETUP (API 1.5)
     // Delay is randomized here in JS (device's built-in 0xFFFF would give 1–4s).
-    // start_delay in 0.1s units (big-endian), time_limit=0 (unlimited), shot_limit=0 (unlimited)
+    // start_delay in 0.1s units (big-endian); time/shot limits come from the PAR card
     async function startWithRandomDelay() {
         if (!characteristics.parSetup) {
             alert('PAR_SETUP niedostepny — sprawdz konsole po poprawny UUID charakterystyki.');
@@ -1520,13 +1670,12 @@
         try {
             // Random delay in tenths of a second within 1.0–3.0s (10..30 inclusive)
             const delayTenths = 10 + Math.floor(Math.random() * 21);
-            const parData = new Uint8Array([
-                (delayTenths >> 8) & 0xFF, delayTenths & 0xFF,
-                0x00, 0x00,
-                0x00, 0x00
-            ]);
+            const parData = buildParBytes(delayTenths);
             console.log('Writing PAR_SETUP to UUID:', BLE_CHAR_PAR_SETUP, 'delay(s):', delayTenths / 10, parData);
             await gattExec(() => characteristics.parSetup.writeValue(parData));
+            const { timeS, shotLimit } = getParLimits();
+            lastWrittenPar = { time: timeS, shots: shotLimit };
+            updateParStatus(timeS, shotLimit);
             await sendCommand(CMD_SESSION_START);
         } catch (error) {
             console.error('PAR_SETUP write failed (UUID may be wrong):', BLE_CHAR_PAR_SETUP, error);
@@ -1842,7 +1991,7 @@
         elements.shotsTable.classList.remove('hidden');
 
         // Store for calculator export (cached sessions carry their labels)
-        historySession = { sessId, shots, nazwaToru: labels.nazwaToru, uczestnik: labels.uczestnik, startDelay: labels.startDelay, timerSn: labels.timerSn || deviceSerial };
+        historySession = { sessId, shots, nazwaToru: labels.nazwaToru, uczestnik: labels.uczestnik, startDelay: labels.startDelay, parTime: labels.parTime, parShots: labels.parShots, timerSn: labels.timerSn || deviceSerial };
         elements.btnSendHistoryToCalc.classList.remove('hidden');
         elements.btnSaveHistoryToDb.classList.remove('hidden');
 
@@ -2064,6 +2213,11 @@
         if (timerSn) payload.timer_sn = timerSn;
         if (overrides.sessId) payload.sess_id = overrides.sessId;
 
+        // PAR limits active on the timer during this session — sent only when set,
+        // stored in dedicated DB columns (opis stays untouched: the video overlay parses it)
+        if (overrides.parTime > 0) payload.par_time_limit = overrides.parTime;
+        if (overrides.parShots > 0) payload.par_shot_limit = overrides.parShots;
+
         return payload;
     }
 
@@ -2102,15 +2256,15 @@
     // Save live session directly to database (no A/C/D scoring)
     function saveToDatabase() {
         const shots = currentSession.shots;
-        const payload = buildSavePayload(shots, { sessId: currentSession.id, startDelay: currentSession.startDelay }, false);
+        const payload = buildSavePayload(shots, { sessId: currentSession.id, startDelay: currentSession.startDelay, parTime: currentSession.parTime, parShots: currentSession.parShots }, false);
         if (!payload) return;
         postToDatabase(payload, elements.btnSaveToDb, elements.dbSaveStatusLive);
     }
 
     // Save historical session directly to database (no A/C/D scoring)
     function saveHistoryToDatabase() {
-        const { sessId, shots, nazwaToru, uczestnik, startDelay, timerSn } = historySession;
-        const payload = buildSavePayload(shots, { sessId, nazwaToru, uczestnik, startDelay, timerSn }, true);
+        const { sessId, shots, nazwaToru, uczestnik, startDelay, parTime, parShots, timerSn } = historySession;
+        const payload = buildSavePayload(shots, { sessId, nazwaToru, uczestnik, startDelay, parTime, parShots, timerSn }, true);
         if (!payload) return;
         postToDatabase(payload, elements.btnSaveHistoryToDb, elements.dbSaveStatusHistory);
     }
@@ -2131,11 +2285,15 @@
     elements.btnSaveHistoryToDb.addEventListener('click', saveHistoryToDatabase);
     elements.inputNazwaToru.addEventListener('input', saveNazwaToru);
     elements.inputPlayIdTone.addEventListener('change', savePlayIdTonePref);
+    elements.inputParTime.addEventListener('input', saveParSetup);
+    elements.inputParShots.addEventListener('input', saveParSetup);
+    elements.btnWritePar.addEventListener('click', writeParToTimer);
 
     // Initialize
     checkBrowserSupport();
     loadNazwaToru();
     loadPlayIdTonePref();
+    loadParSetup();
     renderCacheCard();
     </script>
 </body>

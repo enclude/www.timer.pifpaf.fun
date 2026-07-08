@@ -10,6 +10,7 @@ Strona: [timer.pifpaf.fun](https://timer.pifpaf.fun) | GitHub: [enclude/www.time
 - **Podglad na zywo** - biezacy czas i liczba strzalow w czasie rzeczywistym
 - **Sterowanie sesja** - Start / Stop sesji strzeleckiej
 - **Start z opoznieniem** - Start PAR z losowym opoznieniem 1-4s (PAR_SETUP)
+- **Ustawienia PAR** - limit czasu i limit strzalow zapisywane do timera (karta "Ustawienia PAR"); timer sam konczy sesje po osiagnieciu limitu; limity sa tez wysylane do bazy kalkulatora w osobnych polach (bez zmiany opisu)
 - **Historia sesji** - przegladanie sesji zapisanych w urzadzeniu z liczba strzalow i czasem trwania
 - **Cache sesji** - pobranie sesji z ostatnich 24h (wraz z listami strzalow) do pamieci przegladarki (localStorage); pobrane sesje mozna przegladac i wysylac do kalkulatora bez polaczenia BLE — timer pozostaje wolny dla innych
 - **Etykiety sesji w cache** - kazdej sesji w cache mozna przypisac nazwe toru i uczestnika (ikona olowka); etykiety sa zapamietywane i uzywane przy wysylaniu do kalkulatora (maja pierwszenstwo nad formularzem "Dane do kalkulatora")
@@ -162,7 +163,7 @@ Charakterystyka `75200005-…` (R, W), format: `[start_delay(2), time_limit(2), 
 | `time_limit` | jednostki 0.1s | `0x0000` = bez limitu czasu |
 | `shot_limit` | liczba strzalow | `0x0000` = bez limitu strzalow |
 
-Przycisk "Start" zapisuje `[0x00,0x00,0x00,0x00,0x00,0x00]` (zerowe opoznienie), przycisk "Start z opoznieniem" zapisuje `[0xFF,0xFF,0x00,0x00,0x00,0x00]` (losowe 1–4s). Po zapisie PAR_SETUP wymagane jest oddzielne wyslanie komendy SESSION_START.
+Przycisk "Start" zapisuje PAR z zerowym opoznieniem, przycisk "Start z opoznieniem" z losowym opoznieniem 1.0–3.0s (losowanym w JS). W obu przypadkach `time_limit` i `shot_limit` pochodza z karty "Ustawienia PAR" (0 = bez limitu). Przycisk "Zapisz PAR w timerze" zapisuje same limity, zachowujac `start_delay` odczytany z urzadzenia. Po zapisie PAR_SETUP wymagane jest oddzielne wyslanie komendy SESSION_START.
 
 ### Wersjonowanie
 
