@@ -533,7 +533,7 @@
 
             <div id="deviceInfo" class="device-info hidden">
                 <div class="info-item">
-                    <label>Nazwa urzadzenia</label>
+                    <label>Nazwa urzadzenia (nr seryjny)</label>
                     <span id="deviceName">-</span>
                 </div>
                 <div class="info-item">
@@ -807,6 +807,9 @@
         lastShotTime: 0
     };
     let historySession = { sessId: null, shots: [] };
+    // BLE device name doubles as the timer serial number (e.g. SG-SST4B00000);
+    // kept across disconnects so cache-based saves can still attribute the device
+    let deviceSerial = '';
     let metadataAborted = false;
     let metadataTask = Promise.resolve();
     let shotsLoadToken = 0;
@@ -1006,6 +1009,12 @@
                     </svg>
                 </div>
             `;
+            // Device name comes from BLE — append via textContent, not innerHTML
+            if (session.timerSn) {
+                const metaEls = li.querySelectorAll('.session-meta');
+                const metaEl = metaEls[metaEls.length - 1];
+                metaEl.textContent += ` · ${session.timerSn}`;
+            }
             // Labels are user-entered text — set via textContent, not innerHTML
             const label = [session.nazwaToru, session.uczestnik].filter(Boolean).join(' · ');
             if (label) {
@@ -1044,6 +1053,7 @@
             uczestnik
         };
         if (typeof startDelay === 'number') entry.startDelay = startDelay;
+        if (deviceSerial) entry.timerSn = deviceSerial;
         const idx = cache.sessions.findIndex(s => s.sessId === sessId);
         if (idx >= 0) {
             cache.sessions[idx] = entry;
@@ -1070,6 +1080,7 @@
                 if (old.nazwaToru) s.nazwaToru = old.nazwaToru;
                 if (old.uczestnik) s.uczestnik = old.uczestnik;
                 if (typeof old.startDelay === 'number') s.startDelay = old.startDelay;
+                if (old.timerSn && !s.timerSn) s.timerSn = old.timerSn;
             }
         });
     }
@@ -1202,7 +1213,8 @@
             elements.liveSection.classList.remove('hidden');
             elements.sessionsCard.classList.remove('hidden');
 
-            // Read device info
+            // Read device info (device name doubles as the timer serial number)
+            deviceSerial = device.name || '';
             elements.deviceName.textContent = device.name || 'Nieznane';
             await readApiVersion();
             await readDeviceTime();
@@ -1699,7 +1711,9 @@
                     }
                 }
 
-                sessions.push({ sessId, shots });
+                const entry = { sessId, shots };
+                if (deviceSerial) entry.timerSn = deviceSerial;
+                sessions.push(entry);
             }
 
             // Re-download must not wipe labels assigned to existing entries
@@ -1799,7 +1813,7 @@
         elements.shotsTable.classList.remove('hidden');
 
         // Store for calculator export (cached sessions carry their labels)
-        historySession = { sessId, shots, nazwaToru: labels.nazwaToru, uczestnik: labels.uczestnik, startDelay: labels.startDelay };
+        historySession = { sessId, shots, nazwaToru: labels.nazwaToru, uczestnik: labels.uczestnik, startDelay: labels.startDelay, timerSn: labels.timerSn || deviceSerial };
         elements.btnSendHistoryToCalc.classList.remove('hidden');
         elements.btnSaveHistoryToDb.classList.remove('hidden');
 
@@ -2014,7 +2028,14 @@
         const nazwaToru = (overrides.nazwaToru || elements.inputNazwaToru.value).trim();
         const uczestnik = (overrides.uczestnik || elements.inputUczestnik.value).trim();
 
-        return { liczba_strzalow: liczbaStrzalow, czas_bazowy: czasBazowy, opis, nazwa_toru: nazwaToru, uczestnik };
+        const payload = { liczba_strzalow: liczbaStrzalow, czas_bazowy: czasBazowy, opis, nazwa_toru: nazwaToru, uczestnik };
+
+        // Timer serial number and device session ID (unixtime-like) — sent only when available
+        const timerSn = (overrides.timerSn || deviceSerial || '').trim();
+        if (timerSn) payload.timer_sn = timerSn;
+        if (overrides.sessId) payload.sess_id = overrides.sessId;
+
+        return payload;
     }
 
     async function postToDatabase(payload, btn, statusEl) {
@@ -2052,15 +2073,15 @@
     // Save live session directly to database (no A/C/D scoring)
     function saveToDatabase() {
         const shots = currentSession.shots;
-        const payload = buildSavePayload(shots, { startDelay: currentSession.startDelay }, false);
+        const payload = buildSavePayload(shots, { sessId: currentSession.id, startDelay: currentSession.startDelay }, false);
         if (!payload) return;
         postToDatabase(payload, elements.btnSaveToDb, elements.dbSaveStatusLive);
     }
 
     // Save historical session directly to database (no A/C/D scoring)
     function saveHistoryToDatabase() {
-        const { sessId, shots, nazwaToru, uczestnik, startDelay } = historySession;
-        const payload = buildSavePayload(shots, { sessId, nazwaToru, uczestnik, startDelay }, true);
+        const { sessId, shots, nazwaToru, uczestnik, startDelay, timerSn } = historySession;
+        const payload = buildSavePayload(shots, { sessId, nazwaToru, uczestnik, startDelay, timerSn }, true);
         if (!payload) return;
         postToDatabase(payload, elements.btnSaveHistoryToDb, elements.dbSaveStatusHistory);
     }

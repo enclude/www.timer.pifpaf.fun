@@ -67,8 +67,11 @@ Prefix nazwy urządzenia: `SG-SST4`
 
 Przycisk "Pobierz sesje do cache" (`downloadSessionsToCache()`) zapisuje sesje z ostatnich 24h
 (wraz z pełnymi listami strzałów) w `localStorage` pod kluczem `sgtimer_session_cache`
-(format: `{ savedAt, sessions: [{ sessId, shots: [{num, time}], nazwaToru?, uczestnik? }] }`,
-najnowsze pierwsze).
+(format: `{ savedAt, sessions: [{ sessId, shots: [{num, time}], nazwaToru?, uczestnik?, timerSn? }] }`,
+najnowsze pierwsze). `timerSn` = nazwa urządzenia BLE (numer seryjny, zmienna `deviceSerial`)
+z chwili pobrania/auto-zapisu — pokazywana przy sesji w karcie cache (dopisywana przez
+`textContent`, nie `innerHTML`) i wysyłana jako `timer_sn` przy zapisie do bazy;
+`applyCachedLabels()` przenosi ją ze starego cache tak jak etykiety.
 Granica 24h liczona od **czasu urządzenia** (charakterystyka Unix Time) — ta sama konwencja
 czasu lokalnego co ID sesji. Odczyt listy sesji przerywany wcześniej, gdy `sessId < cutoff`
 (lista idzie od najnowszej). Karta "Sesje z cache" (`renderCacheCard()`) działa **bez połączenia BLE**
@@ -96,9 +99,17 @@ Nazwa toru jest pamietana per przegladarka w `localStorage` (klucz `sgtimer_nazw
 uczestnik nie jest pamietany.
 
 Przyciski "Zapisz w bazie" wysyłają POST na `https://piro-kalkulator.pifpaf.fun/api_save.php`
-z JSON `{liczba_strzalow, czas_bazowy, opis, nazwa_toru?, uczestnik?}` i wyświetlają zwrócone ID wpisu.
+z JSON `{liczba_strzalow, czas_bazowy, opis, nazwa_toru?, uczestnik?, timer_sn?, sess_id?}`
+i wyświetlają zwrócone ID wpisu.
 Kary i punktacja są zerowe (tylko czas i liczba strzałów). Funkcje: `saveToDatabase()` (live),
 `saveHistoryToDatabase()` (historia), wspólna logika w `buildSavePayload()` i `postToDatabase()`.
+`timer_sn` = numer seryjny timera (nazwa urządzenia BLE, zmienna `deviceSerial` ustawiana przy
+połączeniu i celowo NIE czyszczona przy rozłączeniu; dla sesji z cache priorytet ma `timerSn`
+zapisany przy sesji). `sess_id` = ID sesji **na timerze** (unixtime-podobny, czas lokalny
+urządzenia) — live z `currentSession.id`, historia/cache z `historySession.sessId`. Oba pola
+dokładane tylko gdy dostępne (`buildSavePayload`). Kalkulator zapisuje je w kolumnach
+`timer_sn`/`timer_sess_id`, pokazuje w modalu szczegółów `wyniki.php` i pozwala filtrować
+wyniki po numerze seryjnym (parametr `sn` w linku udostępniania wyszukiwania).
 
 **Edycja wpisu po zapisie:** `api_save.php` zwraca też `edit_token` (token uprawniający do edycji
 WYŁĄCZNIE tego jednego wpisu). Po sukcesie zapisu `postToDatabase()` dokłada obok "🔊 Zagraj sygnał ID"
