@@ -81,6 +81,33 @@
             border-bottom: 2px solid var(--border-light);
         }
 
+        .card h2.card-header-toggle {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .card h2.card-header-toggle .chevron {
+            flex-shrink: 0;
+            transition: transform 0.2s;
+        }
+
+        .card.collapsed h2.card-header-toggle {
+            margin-bottom: 0;
+            border-bottom: none;
+            padding-bottom: 0;
+        }
+
+        .card.collapsed h2.card-header-toggle .chevron {
+            transform: rotate(-90deg);
+        }
+
+        .card.collapsed .card-body-collapsible {
+            display: none;
+        }
+
         .btn {
             display: inline-flex;
             align-items: center;
@@ -569,26 +596,33 @@
 
         <!-- PAR settings: time limit + shot limit written to the timer (PAR_SETUP) -->
         <div id="parCard" class="card hidden">
-            <h2>Ustawienia PAR</h2>
-            <div class="calc-fields">
-                <div class="field-group">
-                    <label for="inputParTime">Czas maksymalny [s] (0 = bez limitu)</label>
-                    <input type="number" id="inputParTime" min="0" max="6553.4" step="0.1" value="0">
+            <h2 id="parCardHeader" class="card-header-toggle">
+                Ustawienia PAR
+                <svg class="chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="6 9 12 15 18 9"/>
+                </svg>
+            </h2>
+            <div id="parCardBody" class="card-body-collapsible">
+                <div class="calc-fields">
+                    <div class="field-group">
+                        <label for="inputParTime">Czas maksymalny [s] (0 = bez limitu)</label>
+                        <input type="number" id="inputParTime" min="0" max="6553.4" step="0.1" value="0">
+                    </div>
+                    <div class="field-group">
+                        <label for="inputParShots">Limit strzalow (0 = bez limitu)</label>
+                        <input type="number" id="inputParShots" min="0" max="65534" step="1" value="0">
+                    </div>
                 </div>
-                <div class="field-group">
-                    <label for="inputParShots">Limit strzalow (0 = bez limitu)</label>
-                    <input type="number" id="inputParShots" min="0" max="65534" step="1" value="0">
+                <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px;">
+                    <button id="btnWritePar" class="btn btn-outline">Zapisz PAR w timerze</button>
+                    <button id="btnResetPar" class="btn btn-outline">Zresetuj PAR</button>
+                    <span id="parStatus" style="font-size: 0.85rem; color: var(--text-secondary);"></span>
                 </div>
+                <p style="margin-top: 10px; font-size: 0.8rem; color: var(--text-secondary);">
+                    Limity sa zapisywane do timera przyciskiem powyzej oraz automatycznie przy kazdym
+                    starcie z tej strony. Timer zakonczy sesje po osiagnieciu limitu czasu lub strzalow.
+                </p>
             </div>
-            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px;">
-                <button id="btnWritePar" class="btn btn-outline">Zapisz PAR w timerze</button>
-                <button id="btnResetPar" class="btn btn-outline">Zresetuj PAR</button>
-                <span id="parStatus" style="font-size: 0.85rem; color: var(--text-secondary);"></span>
-            </div>
-            <p style="margin-top: 10px; font-size: 0.8rem; color: var(--text-secondary);">
-                Limity sa zapisywane do timera przyciskiem powyzej oraz automatycznie przy kazdym
-                starcie z tej strony. Timer zakonczy sesje po osiagnieciu limitu czasu lub strzalow.
-            </p>
         </div>
 
         <!-- Live Session Display -->
@@ -942,7 +976,8 @@
         inputParShots: document.getElementById('inputParShots'),
         btnWritePar: document.getElementById('btnWritePar'),
         btnResetPar: document.getElementById('btnResetPar'),
-        parStatus: document.getElementById('parStatus')
+        parStatus: document.getElementById('parStatus'),
+        parCardHeader: document.getElementById('parCardHeader')
     };
 
     // Persist stage name per browser (localStorage), expires 8h after last use
@@ -996,6 +1031,31 @@
 
     // Persist PAR limits (time limit / shot limit) per browser (localStorage)
     const STORAGE_KEY_PAR_SETUP = 'sgtimer_par_setup';
+    const STORAGE_KEY_PAR_COLLAPSED = 'sgtimer_par_collapsed';
+
+    function setParCardCollapsed(collapsed) {
+        elements.parCard.classList.toggle('collapsed', collapsed);
+        try {
+            localStorage.setItem(STORAGE_KEY_PAR_COLLAPSED, collapsed ? '1' : '0');
+        } catch (e) {
+            console.warn('localStorage unavailable:', e);
+        }
+    }
+
+    function toggleParCard() {
+        setParCardCollapsed(!elements.parCard.classList.contains('collapsed'));
+    }
+
+    function loadParCardCollapsed() {
+        let collapsed = true;
+        try {
+            const raw = localStorage.getItem(STORAGE_KEY_PAR_COLLAPSED);
+            if (raw !== null) collapsed = raw === '1';
+        } catch (e) {
+            console.warn('localStorage unavailable:', e);
+        }
+        elements.parCard.classList.toggle('collapsed', collapsed);
+    }
 
     function loadParSetup() {
         try {
@@ -2302,12 +2362,14 @@
     elements.inputParShots.addEventListener('input', saveParSetup);
     elements.btnWritePar.addEventListener('click', writeParToTimer);
     elements.btnResetPar.addEventListener('click', resetParOnTimer);
+    elements.parCardHeader.addEventListener('click', toggleParCard);
 
     // Initialize
     checkBrowserSupport();
     loadNazwaToru();
     loadPlayIdTonePref();
     loadParSetup();
+    loadParCardCollapsed();
     renderCacheCard();
     </script>
 </body>
