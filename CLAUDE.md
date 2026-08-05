@@ -149,6 +149,12 @@ WYŁĄCZONY) — od razu odtwarza `playIdTone(data.id)`. Cel: aplikacja Piro Ove
 (github.com/enclude/congenial-octo-memory — nakładka na wideo ze strzelania) może
 zdekodować ID sesji prosto z mikrofonu kamery, bez ręcznego wpisywania.
 
+**Auto-zapis do bazy przy koncu sesji live:** gdy checkbox "Zagraj sygnał ID po zapisie" jest
+zaznaczony, `handleSessionStopped` (po `SESSION_STOPPED`, gdy sa strzały) sam woła
+`saveToDatabase()` — bez klikania "Zapisz w bazie". Zapis do bazy sam odtwarza ton (patrz
+wyżej), więc zaznaczenie tego checkboxa włącza od razu obie rzeczy: zapis i sygnał, skracając
+obsługę stanowiska. Odznaczony checkbox = bez zmian, zapis tylko ręcznym przyciskiem.
+
 Protokół v2 (`playIdTone`, Web Audio, sinus przez `AudioContext`+`OscillatorNode`): marker
 5000 Hz ("tu zaczyna się kod") + 4 tony cyfr + ton cyfry kontrolnej (`idToneChecksum` =
 suma ważona pozycją 1–4 mod 10), każdy jeden z 10 tonów 5200–7000 Hz (co 200 Hz na cyfrę

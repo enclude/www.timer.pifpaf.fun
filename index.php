@@ -1676,6 +1676,12 @@
             elements.sessionStatus.textContent += ' · zapisano w cache';
         }
 
+        // When the ID-tone checkbox is on, skip the manual "Zapisz w bazie" click —
+        // save straight away so the tone plays right after the session ends
+        if (totalShots > 0 && elements.inputPlayIdTone.checked) {
+            saveToDatabase();
+        }
+
         console.log('Session stopped:', { sessId, totalShots });
     }
 
