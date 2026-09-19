@@ -124,6 +124,14 @@ zawodników; tor/uczestnika uzupełnia się później w kalkulatorze. Przebieg:
    (pola formularza "Dane do kalkulatora" NIE są dopisywane do wszystkich sesji); po każdym
    sukcesie `dbId` + `dbEditToken` zapisywane do cache od razu (odporność na zerwanie połączenia).
 Status: "Wysłano nowych: N · już w bazie: M [· błędy: K]". Sygnał ID nie jest odtwarzany.
+**Nadpisywanie:** checkbox "Nadpisz sesje już zapisane w bazie" (`inputBulkOverwrite`, niepamiętany)
+— sesje z `dbId` też są wysyłane, z `overwrite: true, id, edit_token?` w payloadzie
+(`buildSavePayload` dokłada te pola tylko gdy `overrides.overwrite` i są `timer_sn`+`sess_id`);
+`api_save.php` robi wtedy UPDATE pól z timera (strzały, czas, opis, PAR), przelicza czas końcowy
+i hit factor z istniejącej punktacji, a tor/uczestnika nadpisuje tylko niepustymi wartościami.
+Status wtedy "nadpisano: U" zamiast "już w bazie". Ręczny "Zapisz w bazie" dla sesji z `dbId`
+pyta `confirm()`: OK = nadpisz, Anuluj = dodaj nowy wpis; `postToDatabase` pokazuje
+"Zaktualizowano wpis ID" gdy `data.updated`, link edycji z tokenu z odpowiedzi lub z payloadu.
 `dbId` pokazywany w liście cache jako plakietka "w bazie #ID", `dbEditToken` (tylko gdy wpis zapisany
 z TEJ przeglądarki — `api_lookup.php` celowo nie zwraca tokenów, bo SN i ID sesji są publiczne w
 `wyniki.php`) daje link "✏️ edytuj w bazie" (`buildDbEditUrl()`). Ręczny zapis (live/historia) też

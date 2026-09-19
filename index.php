@@ -769,6 +769,10 @@
                     Wyślij wszystkie do bazy
                 </button>
             </div>
+            <label class="checkbox-row" for="inputBulkOverwrite" style="margin-top: 10px;">
+                <input type="checkbox" id="inputBulkOverwrite">
+                Nadpisz sesje już zapisane w bazie (czasy i strzały; tor, uczestnik i punktacja w bazie zostają)
+            </label>
             <div id="cacheDbStatus" class="db-save-status hidden" style="margin-top: 8px;"></div>
 
             <button id="btnClearCache" class="btn btn-outline" style="margin-top: 15px;">
@@ -995,6 +999,7 @@
         cacheList: document.getElementById('cacheList'),
         cacheRange: document.getElementById('cacheRange'),
         btnBulkSaveCache: document.getElementById('btnBulkSaveCache'),
+        inputBulkOverwrite: document.getElementById('inputBulkOverwrite'),
         cacheDbStatus: document.getElementById('cacheDbStatus'),
         btnClearCache: document.getElementById('btnClearCache'),
         sessionList: document.getElementById('sessionList'),
@@ -2430,6 +2435,15 @@
         if (overrides.parTime > 0) payload.par_time_limit = overrides.parTime;
         if (overrides.parShots > 0) payload.par_shot_limit = overrides.parShots;
 
+        // Overwrite mode: api_save.php updates the existing row (same timer SN +
+        // session ID, optionally pinned by id) instead of inserting; the edit
+        // token, when we hold it, lets the server return it back to us
+        if (overrides.overwrite && payload.timer_sn && payload.sess_id) {
+            payload.overwrite = true;
+            if (overrides.dbId) payload.id = overrides.dbId;
+            if (overrides.dbEditToken) payload.edit_token = overrides.dbEditToken;
+        }
+
         return payload;
     }
 
@@ -2445,10 +2459,11 @@
             });
             const data = await resp.json();
             if (data.ok) {
-                statusEl.textContent = `Zapisano! ID: #${data.id}`;
+                statusEl.textContent = data.updated ? `Zaktualizowano wpis ID: #${data.id}` : `Zapisano! ID: #${data.id}`;
                 addIdToneReplayButton(statusEl, data.id);
-                if (data.edit_token) {
-                    addDbEditLinkButton(statusEl, data.id, data.edit_token);
+                const editToken = data.edit_token || payload.edit_token;
+                if (editToken) {
+                    addDbEditLinkButton(statusEl, data.id, editToken);
                 }
                 if (elements.inputPlayIdTone.checked) {
                     playIdTone(data.id);
@@ -2477,8 +2492,13 @@
 
     // Save historical session directly to database (no A/C/D scoring)
     function saveHistoryToDatabase() {
-        const { sessId, shots, nazwaToru, uczestnik, startDelay, parTime, parShots, timerSn } = historySession;
-        const payload = buildSavePayload(shots, { sessId, nazwaToru, uczestnik, startDelay, parTime, parShots, timerSn }, true);
+        const { sessId, shots, nazwaToru, uczestnik, startDelay, parTime, parShots, timerSn, dbId, dbEditToken } = historySession;
+        // Already in the database: OK = overwrite that row, Cancel = add a new one
+        let overwrite = false;
+        if (dbId) {
+            overwrite = confirm(`Ta sesja jest już w bazie jako wpis #${dbId}. Nadpisać istniejący wpis?\n(Anuluj = dodaj jako nowy wpis)`);
+        }
+        const payload = buildSavePayload(shots, { sessId, nazwaToru, uczestnik, startDelay, parTime, parShots, timerSn, overwrite, dbId, dbEditToken }, true);
         if (!payload) return;
         postToDatabase(payload, elements.btnSaveHistoryToDb, elements.dbSaveStatusHistory,
             data => markCachedSessionSaved(sessId, data.id, data.edit_token));
@@ -2505,7 +2525,9 @@
     // Bulk save: push every cached session with shots to the database.
     // Sessions already in the database (same timer SN + session ID, checked
     // via api_lookup.php, or dbId recorded locally) are NOT duplicated — they
-    // are marked with their entry ID and labels pulled from the database.
+    // are marked with their entry ID and labels pulled from the database, or,
+    // with "Nadpisz" checked, overwritten in place (timer fields only; the
+    // calculator keeps its scoring and any labels we do not send).
     // Stage/participant may be empty here; they get filled in later in the
     // calculator (match day: no time to type names between runs).
     async function bulkSaveCacheToDatabase() {
@@ -2523,7 +2545,8 @@
         }
 
         elements.btnBulkSaveCache.disabled = true;
-        let alreadyInDb = 0, saved = 0, failed = 0, lookupFailed = false;
+        const overwrite = elements.inputBulkOverwrite.checked;
+        let alreadyInDb = 0, saved = 0, updated = 0, failed = 0, lookupFailed = false;
         try {
             // 1. Lookup — which sessions does the database already hold?
             const pending = withShots.filter(s => !s.dbId);
@@ -2562,15 +2585,19 @@
                 return;
             }
 
-            // 2. Save the rest, one by one (oldest first — ascending DB ids)
-            const toSave = cache.sessions.filter(s => s.shots && s.shots.length > 0 && !s.dbId).reverse();
+            // 2. Save the rest, one by one (oldest first — ascending DB ids);
+            //    with overwrite on, also re-send the ones already in the database
+            const toSave = cache.sessions
+                .filter(s => s.shots && s.shots.length > 0 && (overwrite || !s.dbId))
+                .reverse();
             for (let i = 0; i < toSave.length; i++) {
                 const s = toSave[i];
                 statusEl.textContent = `Wysyłanie ${i + 1}/${toSave.length}...`;
                 const payload = buildSavePayload(s.shots, {
                     sessId: s.sessId, nazwaToru: s.nazwaToru, uczestnik: s.uczestnik,
                     startDelay: s.startDelay, parTime: s.parTime, parShots: s.parShots,
-                    timerSn: s.timerSn || deviceSerial, noFormFallback: true
+                    timerSn: s.timerSn || deviceSerial, noFormFallback: true,
+                    overwrite: overwrite && !!s.dbId, dbId: s.dbId, dbEditToken: s.dbEditToken
                 }, true);
                 if (!payload) continue;
                 try {
@@ -2583,7 +2610,7 @@
                     if (data.ok) {
                         s.dbId = Number(data.id);
                         if (data.edit_token) s.dbEditToken = data.edit_token;
-                        saved++;
+                        if (data.updated) updated++; else saved++;
                         // Persist after every entry so a dropped connection
                         // mid-way never loses an already-assigned ID
                         writeSessionCache(cache);
@@ -2602,7 +2629,8 @@
                 if (cur && cur.dbId) renderShots(cur.sessId, cur.shots, cur);
             }
 
-            const parts = [`Wysłano nowych: ${saved}`, `już w bazie: ${alreadyInDb}`];
+            const parts = [`Wysłano nowych: ${saved}`];
+            parts.push(overwrite ? `nadpisano: ${updated}` : `już w bazie: ${alreadyInDb}`);
             if (failed > 0) parts.push(`błędy: ${failed}`);
             statusEl.textContent = parts.join(' · ');
             if (failed > 0) statusEl.classList.add('error');
