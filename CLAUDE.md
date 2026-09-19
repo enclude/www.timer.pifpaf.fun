@@ -87,14 +87,15 @@ z opisu oś czasu strzałów i format opisu musi zostać bez zmian.
 
 ## Cache sesji (localStorage)
 
-Przycisk "Pobierz sesje do cache" (`downloadSessionsToCache()`) zapisuje sesje z ostatnich 24h
-(wraz z pełnymi listami strzałów) w `localStorage` pod kluczem `sgtimer_session_cache`
-(format: `{ savedAt, sessions: [{ sessId, shots: [{num, time}], nazwaToru?, uczestnik?, timerSn? }] }`,
-najnowsze pierwsze). `timerSn` = nazwa urządzenia BLE (numer seryjny, zmienna `deviceSerial`)
+Przycisk "Pobierz sesje do cache" (`downloadSessionsToCache()`) zapisuje sesje z **dzisiaj**
+(od północy czasu urządzenia: `deviceNow - deviceNow % 86400`, domyślnie) lub z ostatnich 24h
+(select `cacheRange`) wraz z pełnymi listami strzałów w `localStorage` pod kluczem `sgtimer_session_cache`
+(format: `{ savedAt, sessions: [{ sessId, shots: [{num, time}], nazwaToru?, uczestnik?, timerSn?,
+dbId?, dbEditToken? }] }`, najnowsze pierwsze). `timerSn` = nazwa urządzenia BLE (numer seryjny, zmienna `deviceSerial`)
 z chwili pobrania/auto-zapisu — pokazywana przy sesji w karcie cache (dopisywana przez
 `textContent`, nie `innerHTML`) i wysyłana jako `timer_sn` przy zapisie do bazy;
 `applyCachedLabels()` przenosi ją ze starego cache tak jak etykiety.
-Granica 24h liczona od **czasu urządzenia** (charakterystyka Unix Time) — ta sama konwencja
+Granica (północ / 24h) liczona od **czasu urządzenia** (charakterystyka Unix Time) — ta sama konwencja
 czasu lokalnego co ID sesji. Odczyt listy sesji przerywany wcześniej, gdy `sessId < cutoff`
 (lista idzie od najnowszej). Karta "Sesje z cache" (`renderCacheCard()`) działa **bez połączenia BLE**
 (nie jest ukrywana w `onDisconnected()`), a klik w sesję renderuje strzały przez wspólne
@@ -111,6 +112,25 @@ są wypełnione i sesja ma strzały. Duplikaty po `sessId` są nadpisywane, list
 status pokazuje "· zapisano w cache". Ponowne "Pobierz sesje do cache" nie kasuje etykiet —
 `applyCachedLabels()` przenosi je ze starego cache po `sessId` przed zapisem.
 `cache.savedAt` = czas ostatniego zapisu (download lub auto-zapis), w UI jako "Zapisano:".
+
+**Hurtowa wysyłka do bazy (dzień zawodów):** przycisk "Wyślij wszystkie do bazy" w karcie cache
+(`bulkSaveCacheToDatabase()`) — cel: nie stracić danych, gdy na stanowisku nie ma czasu wpisywać
+zawodników; tor/uczestnika uzupełnia się później w kalkulatorze. Przebieg:
+1. sesje z cache bez `dbId` grupowane po `timerSn` → `lookupExistingEntries(sn, sessIds)` (POST
+   `api_lookup.php` w kalkulatorze, `{timer_sn, sess_ids[]}` → `{found:[{sess_id,id,nazwa_toru,uczestnik}]}`);
+   znalezione dostają `dbId` i etykiety z bazy (baza = wzorzec, nadpisuje lokalne, gdy niepuste);
+   błąd lookupu = **przerwanie** wysyłki (inaczej groziłyby duplikaty);
+2. pozostałe (od najstarszej) POST `api_save.php` z `noFormFallback: true` w `buildSavePayload`
+   (pola formularza "Dane do kalkulatora" NIE są dopisywane do wszystkich sesji); po każdym
+   sukcesie `dbId` + `dbEditToken` zapisywane do cache od razu (odporność na zerwanie połączenia).
+Status: "Wysłano nowych: N · już w bazie: M [· błędy: K]". Sygnał ID nie jest odtwarzany.
+`dbId` pokazywany w liście cache jako plakietka "w bazie #ID", `dbEditToken` (tylko gdy wpis zapisany
+z TEJ przeglądarki — `api_lookup.php` celowo nie zwraca tokenów, bo SN i ID sesji są publiczne w
+`wyniki.php`) daje link "✏️ edytuj w bazie" (`buildDbEditUrl()`). Ręczny zapis (live/historia) też
+odkłada `dbId`/`dbEditToken` do cache (`markCachedSessionSaved()` przez callback `onSaved` w
+`postToDatabase()`); `renderShots()` dla sesji z `dbId` pokazuje "W bazie: ID #…" z tonem i linkiem
+edycji, nie blokując ponownego zapisu. `applyCachedLabels()` i `saveLiveSessionToCache()` przenoszą
+`dbId`/`dbEditToken` przy nadpisywaniu wpisu; "Wyczyść cache" pyta o potwierdzenie, gdy są tokeny.
 
 ## Integracja z kalkulatorem PiRO
 

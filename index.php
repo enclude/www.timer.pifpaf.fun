@@ -178,6 +178,34 @@
             flex-wrap: wrap;
         }
 
+        .cache-range {
+            padding: 10px 12px;
+            border: 2px solid var(--primary);
+            border-radius: 6px;
+            font-size: 0.95rem;
+            font-family: inherit;
+            color: var(--primary);
+            background: white;
+            cursor: pointer;
+        }
+
+        .cache-db-badge {
+            display: inline-block;
+            padding: 1px 6px;
+            border-radius: 4px;
+            background: var(--accent);
+            color: white;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .cache-db-edit {
+            font-size: 0.75rem;
+            color: var(--primary);
+            text-decoration: none;
+            margin-left: 6px;
+        }
+
         .status-indicator {
             display: inline-flex;
             align-items: center;
@@ -696,6 +724,10 @@
                     </svg>
                     Pobierz sesje do cache
                 </button>
+                <select id="cacheRange" class="cache-range" title="Zakres pobieranych sesji">
+                    <option value="today">z dzisiaj</option>
+                    <option value="24h">z ostatnich 24h</option>
+                </select>
             </div>
 
             <div id="sessionsLoading" class="loading hidden">
@@ -721,11 +753,23 @@
 
         <!-- Cached Sessions (browsable without BLE connection) -->
         <div id="cacheCard" class="card hidden">
-            <h2>Sesje z cache (ostatnie 24h)</h2>
+            <h2>Sesje z cache</h2>
 
             <p id="cacheInfo" style="margin-bottom: 15px; font-size: 0.85rem; color: var(--text-secondary);"></p>
 
             <ul id="cacheList" class="session-list"></ul>
+
+            <div class="btn-group" style="margin-top: 15px;">
+                <button id="btnBulkSaveCache" class="btn btn-primary">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <ellipse cx="12" cy="5" rx="9" ry="3"/>
+                        <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/>
+                        <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
+                    </svg>
+                    Wyślij wszystkie do bazy
+                </button>
+            </div>
+            <div id="cacheDbStatus" class="db-save-status hidden" style="margin-top: 8px;"></div>
 
             <button id="btnClearCache" class="btn btn-outline" style="margin-top: 15px;">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -949,6 +993,9 @@
         cacheCard: document.getElementById('cacheCard'),
         cacheInfo: document.getElementById('cacheInfo'),
         cacheList: document.getElementById('cacheList'),
+        cacheRange: document.getElementById('cacheRange'),
+        btnBulkSaveCache: document.getElementById('btnBulkSaveCache'),
+        cacheDbStatus: document.getElementById('cacheDbStatus'),
         btnClearCache: document.getElementById('btnClearCache'),
         sessionList: document.getElementById('sessionList'),
         noSessions: document.getElementById('noSessions'),
@@ -1166,8 +1213,10 @@
         await writeParToTimer();
     }
 
-    // Session cache (localStorage) — sessions from the last 24h with full
-    // shot lists, browsable without a BLE connection
+    // Session cache (localStorage) — sessions from today / the last 24h with
+    // full shot lists, browsable without a BLE connection. Entries may carry
+    // dbId (+ dbEditToken when saved from this browser) once stored in the
+    // calculator database — see bulkSaveCacheToDatabase().
     const STORAGE_KEY_SESSION_CACHE = 'sgtimer_session_cache';
     const CACHE_MAX_AGE_S = 24 * 3600;
 
@@ -1196,6 +1245,11 @@
     }
 
     function clearSessionCache() {
+        // Per-entry edit tokens live only here — warn before dropping them
+        const cache = readSessionCache();
+        if (cache && cache.sessions.some(s => s.dbEditToken)) {
+            if (!confirm('Cache zawiera linki edycji wpisów w bazie (tokeny są tylko w tej przeglądarce). Wyczyścić mimo to?')) return;
+        }
         try {
             localStorage.removeItem(STORAGE_KEY_SESSION_CACHE);
         } catch (e) {
@@ -1231,6 +1285,7 @@
                     <div class="session-date">${formatDate(sessId)}</div>
                     <div class="session-meta cache-label hidden" style="color: var(--accent); font-weight: 600;"></div>
                     <div class="session-meta">${meta}</div>
+                    <div class="session-meta cache-db hidden"></div>
                 </div>
                 <div style="display: flex; align-items: center; gap: 8px;">
                     <button class="btn btn-outline btn-small cache-edit" style="margin-top: 0;" title="Przypisz tor / uczestnika">
@@ -1255,6 +1310,26 @@
                 const labelEl = li.querySelector('.cache-label');
                 labelEl.textContent = label;
                 labelEl.classList.remove('hidden');
+            }
+            // Database status: entry ID badge + edit link (only when this
+            // browser holds the per-entry edit token)
+            if (session.dbId) {
+                const dbEl = li.querySelector('.cache-db');
+                const badge = document.createElement('span');
+                badge.className = 'cache-db-badge';
+                badge.textContent = `w bazie #${session.dbId}`;
+                dbEl.appendChild(badge);
+                if (session.dbEditToken) {
+                    const link = document.createElement('a');
+                    link.className = 'cache-db-edit';
+                    link.textContent = '✏️ edytuj w bazie';
+                    link.href = buildDbEditUrl(session.dbId, session.dbEditToken);
+                    link.target = '_blank';
+                    link.rel = 'noopener';
+                    link.addEventListener('click', ev => ev.stopPropagation());
+                    dbEl.appendChild(link);
+                }
+                dbEl.classList.remove('hidden');
             }
             li.querySelector('.cache-edit').addEventListener('click', (ev) => {
                 ev.stopPropagation();
@@ -1292,6 +1367,9 @@
         if (deviceSerial) entry.timerSn = deviceSerial;
         const idx = cache.sessions.findIndex(s => s.sessId === sessId);
         if (idx >= 0) {
+            const old = cache.sessions[idx];
+            if (old.dbId) entry.dbId = old.dbId;
+            if (old.dbEditToken) entry.dbEditToken = old.dbEditToken;
             cache.sessions[idx] = entry;
         } else {
             cache.sessions.push(entry);
@@ -1319,8 +1397,34 @@
                 if (typeof old.parTime === 'number') s.parTime = old.parTime;
                 if (typeof old.parShots === 'number') s.parShots = old.parShots;
                 if (old.timerSn && !s.timerSn) s.timerSn = old.timerSn;
+                if (old.dbId) s.dbId = old.dbId;
+                if (old.dbEditToken) s.dbEditToken = old.dbEditToken;
             }
         });
+    }
+
+    // Record that a cached session now has a row in the calculator database
+    // (entry ID + optional per-entry edit token); labels from the database
+    // override local ones when given (the database is the master copy)
+    function markCachedSessionSaved(sessId, dbId, editToken, dbLabels) {
+        const cache = readSessionCache();
+        const entry = cache ? cache.sessions.find(s => s.sessId === sessId) : null;
+        if (!entry) return false;
+        entry.dbId = dbId;
+        if (editToken) entry.dbEditToken = editToken;
+        if (dbLabels) {
+            if (dbLabels.nazwaToru) entry.nazwaToru = dbLabels.nazwaToru;
+            if (dbLabels.uczestnik) entry.uczestnik = dbLabels.uczestnik;
+        }
+        if (historySession.sessId === sessId) {
+            historySession.dbId = entry.dbId;
+            historySession.dbEditToken = entry.dbEditToken;
+            historySession.nazwaToru = entry.nazwaToru;
+            historySession.uczestnik = entry.uczestnik;
+        }
+        if (!writeSessionCache(cache)) return false;
+        renderCacheCard();
+        return true;
     }
 
     // Assign stage name and participant to a cached session (prompt-based,
@@ -1893,8 +1997,9 @@
         }
     }
 
-    // Download sessions from the last 24h (with full shot lists) into
-    // localStorage so they can be browsed without occupying the timer via BLE
+    // Download sessions from today (device-local midnight) or the last 24h
+    // (with full shot lists) into localStorage so they can be browsed and
+    // bulk-sent to the database without occupying the timer via BLE
     async function downloadSessionsToCache() {
         // Supersede any running shot load and stop the background metadata
         // loader before resetting the sessionList/shotList read cursors
@@ -1912,7 +2017,12 @@
             // as session IDs, so the 24h cutoff is computed from device time
             const timeValue = await gattExec(() => characteristics.unixTime.readValue());
             const deviceNow = parseBigEndian(timeValue, 0, 4);
-            const cutoff = deviceNow - CACHE_MAX_AGE_S;
+            // "today" = since device-local midnight (device time is local time
+            // stored as a UTC-like timestamp, so flooring to 86400 works)
+            const rangeToday = elements.cacheRange.value === 'today';
+            const cutoff = rangeToday
+                ? deviceNow - (deviceNow % 86400)
+                : deviceNow - CACHE_MAX_AGE_S;
 
             // Write 0xFFFFFFFF to start from newest
             const startValue = new Uint8Array([0xFF, 0xFF, 0xFF, 0xFF]);
@@ -1934,7 +2044,7 @@
             }
 
             if (sessionIds.length === 0) {
-                alert('Brak sesji z ostatnich 24h na timerze.');
+                alert(rangeToday ? 'Brak dzisiejszych sesji na timerze.' : 'Brak sesji z ostatnich 24h na timerze.');
                 return;
             }
 
@@ -2070,9 +2180,23 @@
         elements.shotsTable.classList.remove('hidden');
 
         // Store for calculator export (cached sessions carry their labels)
-        historySession = { sessId, shots, nazwaToru: labels.nazwaToru, uczestnik: labels.uczestnik, startDelay: labels.startDelay, parTime: labels.parTime, parShots: labels.parShots, timerSn: labels.timerSn || deviceSerial };
+        historySession = { sessId, shots, nazwaToru: labels.nazwaToru, uczestnik: labels.uczestnik, startDelay: labels.startDelay, parTime: labels.parTime, parShots: labels.parShots, timerSn: labels.timerSn || deviceSerial, dbId: labels.dbId, dbEditToken: labels.dbEditToken };
         elements.btnSendHistoryToCalc.classList.remove('hidden');
         elements.btnSaveHistoryToDb.classList.remove('hidden');
+        elements.btnSaveHistoryToDb.disabled = false;
+        elements.dbSaveStatusHistory.classList.add('hidden');
+        elements.dbSaveStatusHistory.classList.remove('error');
+        elements.dbSaveStatusHistory.textContent = '';
+        if (labels.dbId) {
+            // Already in the database (from bulk save or lookup) — say so,
+            // but leave manual re-save possible
+            elements.dbSaveStatusHistory.textContent = `W bazie: ID #${labels.dbId}`;
+            addIdToneReplayButton(elements.dbSaveStatusHistory, labels.dbId);
+            if (labels.dbEditToken) {
+                addDbEditLinkButton(elements.dbSaveStatusHistory, labels.dbId, labels.dbEditToken);
+            }
+            elements.dbSaveStatusHistory.classList.remove('hidden');
+        }
 
         // Calculate splits and display
         let prevTime = 0;
@@ -2159,6 +2283,7 @@
 
     const KALKULATOR_SAVE_URL = 'https://piro-kalkulator.pifpaf.fun/api_save.php';
     const KALKULATOR_EDIT_URL = 'https://piro-kalkulator.pifpaf.fun/edit.php';
+    const KALKULATOR_LOOKUP_URL = 'https://piro-kalkulator.pifpaf.fun/api_lookup.php';
 
     // ID tone signalling — lets Piro Overlay decode the saved session ID
     // straight from the camera's audio track (no manual typing on import).
@@ -2248,11 +2373,15 @@
     // Link to the calculator's edit form for this entry — the per-entry
     // edit_token from api_save.php grants access to that one entry only
     // (the master edit key never leaves the calculator).
+    function buildDbEditUrl(entryId, editToken) {
+        return `${KALKULATOR_EDIT_URL}?edit=${encodeURIComponent(entryId)}&token=${encodeURIComponent(editToken)}`;
+    }
+
     function addDbEditLinkButton(statusEl, entryId, editToken) {
         const link = document.createElement('a');
         link.className = 'btn btn-outline btn-small btn-db-edit-link';
         link.textContent = '✏️ Edytuj wpis w bazie';
-        link.href = `${KALKULATOR_EDIT_URL}?edit=${encodeURIComponent(entryId)}&token=${encodeURIComponent(editToken)}`;
+        link.href = buildDbEditUrl(entryId, editToken);
         link.target = '_blank';
         link.rel = 'noopener';
         statusEl.appendChild(link);
@@ -2282,8 +2411,12 @@
             opis = `opoznienie startu ${overrides.startDelay}s | ${opis}`;
         }
 
-        const nazwaToru = (overrides.nazwaToru || elements.inputNazwaToru.value).trim();
-        const uczestnik = (overrides.uczestnik || elements.inputUczestnik.value).trim();
+        // Bulk save must not stamp every session with the form's participant —
+        // labels get filled in later in the calculator (noFormFallback)
+        const formNazwaToru = overrides.noFormFallback ? '' : elements.inputNazwaToru.value;
+        const formUczestnik = overrides.noFormFallback ? '' : elements.inputUczestnik.value;
+        const nazwaToru = (overrides.nazwaToru || formNazwaToru).trim();
+        const uczestnik = (overrides.uczestnik || formUczestnik).trim();
 
         const payload = { liczba_strzalow: liczbaStrzalow, czas_bazowy: czasBazowy, opis, nazwa_toru: nazwaToru, uczestnik };
 
@@ -2300,7 +2433,7 @@
         return payload;
     }
 
-    async function postToDatabase(payload, btn, statusEl) {
+    async function postToDatabase(payload, btn, statusEl, onSaved) {
         btn.disabled = true;
         statusEl.classList.remove('hidden', 'error');
         statusEl.textContent = 'Zapisywanie...';
@@ -2320,6 +2453,7 @@
                 if (elements.inputPlayIdTone.checked) {
                     playIdTone(data.id);
                 }
+                if (typeof onSaved === 'function') onSaved(data);
             } else {
                 statusEl.classList.add('error');
                 statusEl.textContent = `Błąd: ${data.error?.message || 'nieznany błąd'}`;
@@ -2337,7 +2471,8 @@
         const shots = currentSession.shots;
         const payload = buildSavePayload(shots, { sessId: currentSession.id, startDelay: currentSession.startDelay, parTime: currentSession.parTime, parShots: currentSession.parShots }, false);
         if (!payload) return;
-        postToDatabase(payload, elements.btnSaveToDb, elements.dbSaveStatusLive);
+        postToDatabase(payload, elements.btnSaveToDb, elements.dbSaveStatusLive,
+            data => markCachedSessionSaved(currentSession.id, data.id, data.edit_token));
     }
 
     // Save historical session directly to database (no A/C/D scoring)
@@ -2345,7 +2480,135 @@
         const { sessId, shots, nazwaToru, uczestnik, startDelay, parTime, parShots, timerSn } = historySession;
         const payload = buildSavePayload(shots, { sessId, nazwaToru, uczestnik, startDelay, parTime, parShots, timerSn }, true);
         if (!payload) return;
-        postToDatabase(payload, elements.btnSaveHistoryToDb, elements.dbSaveStatusHistory);
+        postToDatabase(payload, elements.btnSaveHistoryToDb, elements.dbSaveStatusHistory,
+            data => markCachedSessionSaved(sessId, data.id, data.edit_token));
+    }
+
+    // Ask the calculator which of these device sessions (per timer SN) are
+    // already stored — returns Map sessId -> {id, nazwaToru, uczestnik}
+    async function lookupExistingEntries(timerSn, sessIds) {
+        const found = new Map();
+        if (!timerSn || sessIds.length === 0) return found;
+        const resp = await fetch(KALKULATOR_LOOKUP_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ timer_sn: timerSn, sess_ids: sessIds })
+        });
+        const data = await resp.json();
+        if (!data.ok) throw new Error(data.error?.message || 'lookup failed');
+        (data.found || []).forEach(f => {
+            found.set(Number(f.sess_id), { id: Number(f.id), nazwaToru: f.nazwa_toru || '', uczestnik: f.uczestnik || '' });
+        });
+        return found;
+    }
+
+    // Bulk save: push every cached session with shots to the database.
+    // Sessions already in the database (same timer SN + session ID, checked
+    // via api_lookup.php, or dbId recorded locally) are NOT duplicated — they
+    // are marked with their entry ID and labels pulled from the database.
+    // Stage/participant may be empty here; they get filled in later in the
+    // calculator (match day: no time to type names between runs).
+    async function bulkSaveCacheToDatabase() {
+        const cache = readSessionCache();
+        const statusEl = elements.cacheDbStatus;
+        statusEl.classList.remove('hidden', 'error');
+        if (!cache || cache.sessions.length === 0) {
+            statusEl.textContent = 'Cache jest pusty.';
+            return;
+        }
+        const withShots = cache.sessions.filter(s => s.shots && s.shots.length > 0);
+        if (withShots.length === 0) {
+            statusEl.textContent = 'Brak sesji ze strzałami do wysłania.';
+            return;
+        }
+
+        elements.btnBulkSaveCache.disabled = true;
+        let alreadyInDb = 0, saved = 0, failed = 0, lookupFailed = false;
+        try {
+            // 1. Lookup — which sessions does the database already hold?
+            const pending = withShots.filter(s => !s.dbId);
+            alreadyInDb += withShots.length - pending.length;
+            const bySn = new Map();
+            pending.forEach(s => {
+                const sn = s.timerSn || deviceSerial || '';
+                if (!sn) return;
+                if (!bySn.has(sn)) bySn.set(sn, []);
+                bySn.get(sn).push(s.sessId);
+            });
+            statusEl.textContent = 'Sprawdzanie, co już jest w bazie...';
+            for (const [sn, ids] of bySn) {
+                try {
+                    const found = await lookupExistingEntries(sn, ids);
+                    found.forEach((row, sessId) => {
+                        const entry = cache.sessions.find(s => s.sessId === sessId);
+                        if (!entry) return;
+                        entry.dbId = row.id;
+                        if (row.nazwaToru) entry.nazwaToru = row.nazwaToru;
+                        if (row.uczestnik) entry.uczestnik = row.uczestnik;
+                        alreadyInDb++;
+                    });
+                } catch (e) {
+                    console.warn('Lookup failed for', sn, e);
+                    lookupFailed = true;
+                }
+            }
+            writeSessionCache(cache);
+            renderCacheCard();
+
+            if (lookupFailed) {
+                // Without the lookup we could create duplicates — stop here
+                statusEl.classList.add('error');
+                statusEl.textContent = 'Nie udało się sprawdzić bazy — wysyłka przerwana, żeby nie dublować wpisów.';
+                return;
+            }
+
+            // 2. Save the rest, one by one (oldest first — ascending DB ids)
+            const toSave = cache.sessions.filter(s => s.shots && s.shots.length > 0 && !s.dbId).reverse();
+            for (let i = 0; i < toSave.length; i++) {
+                const s = toSave[i];
+                statusEl.textContent = `Wysyłanie ${i + 1}/${toSave.length}...`;
+                const payload = buildSavePayload(s.shots, {
+                    sessId: s.sessId, nazwaToru: s.nazwaToru, uczestnik: s.uczestnik,
+                    startDelay: s.startDelay, parTime: s.parTime, parShots: s.parShots,
+                    timerSn: s.timerSn || deviceSerial, noFormFallback: true
+                }, true);
+                if (!payload) continue;
+                try {
+                    const resp = await fetch(KALKULATOR_SAVE_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    const data = await resp.json();
+                    if (data.ok) {
+                        s.dbId = Number(data.id);
+                        if (data.edit_token) s.dbEditToken = data.edit_token;
+                        saved++;
+                        // Persist after every entry so a dropped connection
+                        // mid-way never loses an already-assigned ID
+                        writeSessionCache(cache);
+                    } else {
+                        failed++;
+                        console.warn('Save failed for session', s.sessId, data.error);
+                    }
+                } catch (e) {
+                    failed++;
+                    console.warn('Save failed for session', s.sessId, e);
+                }
+            }
+            renderCacheCard();
+            if (historySession.sessId) {
+                const cur = cache.sessions.find(s => s.sessId === historySession.sessId);
+                if (cur && cur.dbId) renderShots(cur.sessId, cur.shots, cur);
+            }
+
+            const parts = [`Wysłano nowych: ${saved}`, `już w bazie: ${alreadyInDb}`];
+            if (failed > 0) parts.push(`błędy: ${failed}`);
+            statusEl.textContent = parts.join(' · ');
+            if (failed > 0) statusEl.classList.add('error');
+        } finally {
+            elements.btnBulkSaveCache.disabled = false;
+        }
     }
 
     // Event listeners
@@ -2354,6 +2617,7 @@
     elements.btnLoadSessions.addEventListener('click', loadSessions);
     elements.btnCacheSessions.addEventListener('click', downloadSessionsToCache);
     elements.btnClearCache.addEventListener('click', clearSessionCache);
+    elements.btnBulkSaveCache.addEventListener('click', bulkSaveCacheToDatabase);
     elements.btnSyncTime.addEventListener('click', syncDeviceTime);
     elements.btnStart.addEventListener('click', startNow);
     elements.btnStartPar.addEventListener('click', startWithRandomDelay);

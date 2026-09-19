@@ -12,7 +12,8 @@ Strona: [timer.pifpaf.fun](https://timer.pifpaf.fun) | GitHub: [enclude/www.time
 - **Start z opoznieniem** - Start PAR z losowym opoznieniem 1-4s (PAR_SETUP)
 - **Ustawienia PAR** - limit czasu i limit strzalow zapisywane do timera (karta "Ustawienia PAR"); timer sam konczy sesje po osiagnieciu limitu; limity sa tez wysylane do bazy kalkulatora w osobnych polach (bez zmiany opisu)
 - **Historia sesji** - przegladanie sesji zapisanych w urzadzeniu z liczba strzalow i czasem trwania
-- **Cache sesji** - pobranie sesji z ostatnich 24h (wraz z listami strzalow) do pamieci przegladarki (localStorage); pobrane sesje mozna przegladac i wysylac do kalkulatora bez polaczenia BLE — timer pozostaje wolny dla innych
+- **Cache sesji** - pobranie sesji z dzisiaj (lub z ostatnich 24h — do wyboru) wraz z listami strzalow do pamieci przegladarki (localStorage); pobrane sesje mozna przegladac i wysylac do kalkulatora bez polaczenia BLE — timer pozostaje wolny dla innych
+- **Hurtowa wysylka do bazy** - przycisk "Wyslij wszystkie do bazy" w karcie "Sesje z cache" zapisuje jednym kliknieciem wszystkie sesje z cache w bazie kalkulatora (bez toru i uczestnika — uzupelnia sie je pozniej w kalkulatorze); sesje, ktore juz sa w bazie (ten sam numer seryjny timera i ID sesji), nie sa dublowane, tylko oznaczane "w bazie #ID" wraz z torem/uczestnikiem pobranymi z bazy; wpisy zapisane z tej przegladarki maja link "edytuj w bazie"
 - **Etykiety sesji w cache** - kazdej sesji w cache mozna przypisac nazwe toru i uczestnika (ikona olowka); etykiety sa zapamietywane i uzywane przy wysylaniu do kalkulatora (maja pierwszenstwo nad formularzem "Dane do kalkulatora")
 - **Auto-zapis po Stop** - jesli nazwa toru i uczestnik sa wypelnione w "Dane do kalkulatora", zakonczona sesja (czasy, strzaly, splity) automatycznie zapisuje sie w cache z tymi etykietami — idealne przy obsludze kolejnych uczestnikow na tym samym torze
 - **Lista strzalow** - czasy i splity dla wybranej sesji
@@ -46,7 +47,8 @@ Aplikacja jest kompatybilna z BLE API w wersji 3.2.
    - Po zakonczeniu sesji kliknac "Wyslij do kalkulatora"
    - Przegladac zapisane sesje — lista wyswietla liczbe strzalow i czas trwania
    - Kliknac sesje historyczna, obejrzec strzaly i wyslac do kalkulatora (opis zawiera date sesji)
-   - Kliknac "Pobierz sesje do cache" — sesje z ostatnich 24h zapisza sie w przegladarce; po rozlaczeniu mozna je dalej przegladac w karcie "Sesje z cache" i wysylac do kalkulatora
+   - Kliknac "Pobierz sesje do cache" (zakres: "z dzisiaj" lub "z ostatnich 24h") — sesje zapisza sie w przegladarce; po rozlaczeniu mozna je dalej przegladac w karcie "Sesje z cache" i wysylac do kalkulatora
+   - Po zawodach: "Wyslij wszystkie do bazy" — wszystkie sesje z cache trafiaja do bazy kalkulatora bez dublowania juz zapisanych; tor i uczestnika mozna uzupelnic pozniej linkiem "edytuj w bazie" lub w panelu kalkulatora
    - Kliknac "Zapisz w bazie" — zapisuje wynik wprost do bazy kalkulatora (bez A/C/D) i wyswietla ID wpisu
 
 ## Specyfikacja techniczna
