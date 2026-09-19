@@ -118,7 +118,8 @@ status pokazuje "· zapisano w cache". Ponowne "Pobierz sesje do cache" nie kasu
 zawodników; tor/uczestnika uzupełnia się później w kalkulatorze. Przebieg:
 1. sesje z cache bez `dbId` grupowane po `timerSn` → `lookupExistingEntries(sn, sessIds)` (POST
    `api_lookup.php` w kalkulatorze, `{timer_sn, sess_ids[]}` → `{found:[{sess_id,id,nazwa_toru,uczestnik}]}`);
-   znalezione dostają `dbId` i etykiety z bazy (baza = wzorzec, nadpisuje lokalne, gdy niepuste);
+   znalezione dostają `dbId`, a etykiety z bazy wypełniają TYLKO puste lokalne (lokalna poprawka,
+   np. literówki w nazwisku, musi przeżyć i przy nadpisywaniu trafić do bazy);
    błąd lookupu = **przerwanie** wysyłki (inaczej groziłyby duplikaty);
 2. pozostałe (od najstarszej) POST `api_save.php` z `noFormFallback: true` w `buildSavePayload`
    (pola formularza "Dane do kalkulatora" NIE są dopisywane do wszystkich sesji); po każdym
@@ -132,6 +133,10 @@ i hit factor z istniejącej punktacji, a tor/uczestnika nadpisuje tylko niepusty
 Status wtedy "nadpisano: U" zamiast "już w bazie". Ręczny "Zapisz w bazie" dla sesji z `dbId`
 pyta `confirm()`: OK = nadpisz, Anuluj = dodaj nowy wpis; `postToDatabase` pokazuje
 "Zaktualizowano wpis ID" gdy `data.updated`, link edycji z tokenu z odpowiedzi lub z payloadu.
+Poprawka toru/uczestnika ołówkiem (`editCachedSessionLabels`) dla sesji z `dbId` pyta `confirm()`
+"Zaktualizować też wpis w bazie?" → `overwriteCachedSessionInDb(entry)` (pojedynczy POST overwrite,
+status w `cacheDbStatus`). Ograniczenie serwera: pusta etykieta NIE czyści pola w bazie —
+wyczyścić można tylko w `edit.php`.
 `dbId` pokazywany w liście cache jako plakietka "w bazie #ID", `dbEditToken` (tylko gdy wpis zapisany
 z TEJ przeglądarki — `api_lookup.php` celowo nie zwraca tokenów, bo SN i ID sesji są publiczne w
 `wyniki.php`) daje link "✏️ edytuj w bazie" (`buildDbEditUrl()`). Ręczny zapis (live/historia) też

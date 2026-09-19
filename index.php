@@ -1444,6 +1444,7 @@
         const uczestnik = prompt('Uczestnik:', entry.uczestnik || elements.inputUczestnik.value);
         if (uczestnik === null) return;
 
+        const changed = entry.nazwaToru !== nazwaToru.trim() || entry.uczestnik !== uczestnik.trim();
         entry.nazwaToru = nazwaToru.trim();
         entry.uczestnik = uczestnik.trim();
 
@@ -1454,6 +1455,52 @@
                 historySession.uczestnik = entry.uczestnik;
             }
             renderCacheCard();
+            // Entry already in the database (e.g. typo in a name): offer to
+            // push the corrected labels there right away
+            if (changed && entry.dbId && (entry.nazwaToru || entry.uczestnik)
+                && confirm(`Zaktualizować też wpis #${entry.dbId} w bazie kalkulatora?`)) {
+                overwriteCachedSessionInDb(entry);
+            }
+        }
+    }
+
+    // Overwrite one cached session's row in the database (timer fields +
+    // non-empty labels); status goes to the cache card
+    async function overwriteCachedSessionInDb(entry) {
+        const statusEl = elements.cacheDbStatus;
+        statusEl.classList.remove('hidden', 'error');
+        statusEl.textContent = `Aktualizowanie wpisu #${entry.dbId}...`;
+        const payload = buildSavePayload(entry.shots, {
+            sessId: entry.sessId, nazwaToru: entry.nazwaToru, uczestnik: entry.uczestnik,
+            startDelay: entry.startDelay, parTime: entry.parTime, parShots: entry.parShots,
+            timerSn: entry.timerSn || deviceSerial, noFormFallback: true,
+            overwrite: true, dbId: entry.dbId, dbEditToken: entry.dbEditToken
+        }, true);
+        if (!payload || !payload.overwrite) {
+            statusEl.classList.add('error');
+            statusEl.textContent = 'Brak danych (numer seryjny / strzały) do aktualizacji wpisu.';
+            return;
+        }
+        try {
+            const resp = await fetch(KALKULATOR_SAVE_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const data = await resp.json();
+            if (data.ok && data.updated) {
+                statusEl.textContent = `Zaktualizowano wpis #${data.id} (tor / uczestnik).`;
+            } else if (data.ok) {
+                // Row vanished (deleted) — server inserted a fresh one
+                markCachedSessionSaved(entry.sessId, Number(data.id), data.edit_token);
+                statusEl.textContent = `Wpis #${entry.dbId} nie istniał — zapisano nowy #${data.id}.`;
+            } else {
+                statusEl.classList.add('error');
+                statusEl.textContent = `Błąd: ${data.error?.message || 'nieznany błąd'}`;
+            }
+        } catch (e) {
+            statusEl.classList.add('error');
+            statusEl.textContent = 'Błąd połączenia';
         }
     }
 
@@ -2525,9 +2572,10 @@
     // Bulk save: push every cached session with shots to the database.
     // Sessions already in the database (same timer SN + session ID, checked
     // via api_lookup.php, or dbId recorded locally) are NOT duplicated — they
-    // are marked with their entry ID and labels pulled from the database, or,
-    // with "Nadpisz" checked, overwritten in place (timer fields only; the
-    // calculator keeps its scoring and any labels we do not send).
+    // are marked with their entry ID (empty local labels filled from the
+    // database), or, with "Nadpisz" checked, overwritten in place: timer
+    // fields plus any non-empty local stage/participant (typo fixes); the
+    // calculator keeps its scoring and any labels we do not send.
     // Stage/participant may be empty here; they get filled in later in the
     // calculator (match day: no time to type names between runs).
     async function bulkSaveCacheToDatabase() {
@@ -2566,8 +2614,11 @@
                         const entry = cache.sessions.find(s => s.sessId === sessId);
                         if (!entry) return;
                         entry.dbId = row.id;
-                        if (row.nazwaToru) entry.nazwaToru = row.nazwaToru;
-                        if (row.uczestnik) entry.uczestnik = row.uczestnik;
+                        // Fill only EMPTY local labels from the database — a label
+                        // corrected here (typo fix) must survive and, with overwrite
+                        // on, replace the one in the database
+                        if (row.nazwaToru && !entry.nazwaToru) entry.nazwaToru = row.nazwaToru;
+                        if (row.uczestnik && !entry.uczestnik) entry.uczestnik = row.uczestnik;
                         alreadyInDb++;
                     });
                 } catch (e) {
