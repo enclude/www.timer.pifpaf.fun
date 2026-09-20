@@ -6,6 +6,9 @@ Strona: [timer.pifpaf.fun](https://timer.pifpaf.fun) | GitHub: [enclude/www.time
 
 ## Funkcje
 
+- **Instalacja jako aplikacja (PWA)** - strone mozna zainstalowac na telefonie/tablecie ("Dodaj do ekranu glownego" / "Zainstaluj aplikacje"); uruchamia sie wtedy w osobnym oknie, bez paska adresu
+- **Dziala bez internetu** - po pierwszym otwarciu aplikacja startuje offline: polaczenie z timerem, podglad na zywo, cache sesji i kody tymczasowe dzialaja bez sieci; internet jest potrzebny wylacznie do zapisu w bazie kalkulatora
+- **Kody tymczasowe** - kazda zakonczona sesja dostaje lokalny kod (np. `3-0147`) odtwarzany tonami do kamery, nawet bez internetu; po kodzie mozna pozniej odnalezc wynik
 - **Polaczenie Bluetooth** - laczenie z timerem przez Web Bluetooth API
 - **Podglad na zywo** - biezacy czas i liczba strzalow w czasie rzeczywistym
 - **Sterowanie sesja** - Start / Stop sesji strzeleckiej
@@ -19,6 +22,8 @@ Strona: [timer.pifpaf.fun](https://timer.pifpaf.fun) | GitHub: [enclude/www.time
 - **Lista strzalow** - czasy i splity dla wybranej sesji
 - **Wyslij do kalkulatora** - przesyla dane serii do [piro-kalkulator.pifpaf.fun](https://piro-kalkulator.pifpaf.fun/) — dostepne zarowno po zakonczeniu biezacej sesji, jak i z poziomu historii
 - **Zapisz w bazie** - zapisuje wynik (czas i liczba strzalow) bezposrednio do bazy kalkulatora bez przechodzenia przez formularz; po zapisie wyswietla ID wpisu — przyda sie gdy nie liczymy A/C/D, a sam czas i liczba strzalow wystarczy
+- **Eksport i import cache** - cala pamiec sesji mozna zapisac do pliku JSON i wczytac na innym urzadzeniu (import scala dane, nie kasuje tego, co juz jest)
+- **Baner synchronizacji** - informuje o trybie offline i o liczbie sesji czekajacych na wyslanie do bazy; przycisk "Wyslij zalegle do bazy" wysyla je jednym kliknieciem, gdy wroci internet
 - **Wersja w stopce** - hash commitu z linkiem do GitHub, generowany automatycznie przez CI
 
 ## Wymagania
@@ -39,7 +44,7 @@ Aplikacja jest kompatybilna z BLE API w wersji 3.2.
 
 ## Jak uzywac
 
-1. Otworz aplikacje w kompatybilnej przegladarce
+1. Otworz aplikacje w kompatybilnej przegladarce (opcjonalnie zainstaluj ja: menu przegladarki → "Zainstaluj aplikacje" / "Dodaj do ekranu glownego")
 2. Kliknij "Polacz z timerem" i wybierz urzadzenie (nazwa zaczyna sie od "SG-SST4")
 3. Po polaczeniu mozesz:
    - Rozpoczac sesje przyciskiem "Start" (natychmiastowy) lub "Start z opoznieniem" (losowe 1-4s)
@@ -50,6 +55,8 @@ Aplikacja jest kompatybilna z BLE API w wersji 3.2.
    - Kliknac "Pobierz sesje do cache" (zakres: "z dzisiaj" lub "z ostatnich 24h") — sesje zapisza sie w przegladarce; po rozlaczeniu mozna je dalej przegladac w karcie "Sesje z cache" i wysylac do kalkulatora
    - Po zawodach: "Wyslij wszystkie do bazy" — wszystkie sesje z cache trafiaja do bazy kalkulatora bez dublowania juz zapisanych; tor i uczestnika mozna uzupelnic pozniej linkiem "edytuj w bazie" lub w panelu kalkulatora
    - Kliknac "Zapisz w bazie" — zapisuje wynik wprost do bazy kalkulatora (bez A/C/D) i wyswietla ID wpisu
+   - Ustawic "Nr stanowiska" w karcie "Dane do kalkulatora" — po kazdej sesji aplikacja nada i zagra kod tymczasowy (np. `3-0147`), takze bez internetu
+   - "Eksportuj do pliku" / "Wczytaj z pliku" w karcie "Sesje z cache" — kopia zapasowa sesji i przenoszenie ich miedzy urzadzeniami
 
 ## Specyfikacja techniczna
 
@@ -137,23 +144,96 @@ Po kliknieciu:
 3. Po sukcesie wyswietlane jest **"Zapisano! ID: #123"** — identyfikator wpisu w bazie kalkulatora
 4. W razie bledu komunikat pokazuje przyczyne i przycisk odblokowuje sie
 
-Wynik zapisuje sie z zerami dla trafien A/C/D i wszystkich kar (`hit_factor = 0`). Pelne dane (lista strzalow z czasami i splitami) trafiaja do pola `opis`.
+Wynik zapisuje sie z zerami dla trafien A/C/D i wszystkich kar (`hit_factor = 0`). Pelne dane (lista strzalow z czasami i splitami) trafiaja do pola `opis`. Jesli sesja ma kod tymczasowy, jest on wysylany razem z wynikiem (pole `temp_id`) — po nim mozna potem odnalezc wpis.
+
+Gdy zapis nie powiedzie sie z powodu braku internetu, komunikat brzmi **"Brak internetu — sesja czeka w cache"**: nic nie ginie, sesje wysyla sie pozniej przyciskiem "Wyslij zalegle do bazy".
+
+### Praca bez internetu (PWA)
+
+Aplikacja jest **Progressive Web App** — mozna ja zainstalowac i uzywac bez zasiegu.
+
+Instalacja:
+- **Android/Chrome**: menu (trzy kropki) → "Zainstaluj aplikacje" lub "Dodaj do ekranu glownego"
+- **Desktop Chrome/Edge**: ikona instalacji w pasku adresu
+- Po instalacji aplikacja otwiera sie w osobnym oknie, w pionie, z wlasna ikona
+
+Co dziala bez internetu:
+- otwarcie aplikacji (strona jest zapamietana przez service worker `sw.js`)
+- polaczenie z timerem, start/stop, podglad na zywo, historia sesji z timera
+- cache sesji w przegladarce, etykiety (tor/uczestnik), eksport do pliku
+- **kody tymczasowe** i ich sygnal tonowy
+
+Czego bez internetu nie ma:
+- zapisu do bazy kalkulatora i wysylki do kalkulatora (te sesje czekaja w cache)
+- sygnalu tonowego z ID wpisu w bazie (ID powstaje dopiero przy zapisie)
+
+Baner na gorze strony pokazuje tryb offline oraz liczbe sesji w cache, ktore nie maja jeszcze
+wpisu w bazie. Gdy internet wroci, baner daje przycisk **"Wyslij zalegle do bazy"** — nic nie
+jest wysylane samo z siebie, wysylka zawsze wymaga klikniecia.
+
+Po wdrozeniu nowej wersji aplikacja aktualizuje sie sama przy kolejnym otwarciu z internetem
+(wersja w stopce pokazuje, ktory commit jest uruchomiony).
+
+### Kody tymczasowe (dzialaja bez internetu)
+
+Sygnal z ID wpisu wymaga zapisu w bazie, czyli internetu. Na stanowisku strzeleckim zasiegu
+zwykle nie ma, dlatego kazda zakonczona sesja moze dostac **kod tymczasowy** nadawany lokalnie
+w telefonie i od razu odtwarzany tonami do kamery.
+
+- Kod ma postac `S-NNNN`, np. `3-0147`: pierwsza cyfra to **numer stanowiska**, dalej licznik
+  sesji w tej przegladarce. Dzieki numerowi stanowiska kody z roznych stanowisk sie nie powtarzaja.
+- **Nr stanowiska** ustawia sie raz, w karcie "Dane do kalkulatora" (wartosci 1-9, zapamietywane
+  w przegladarce).
+- Checkbox **"Zagraj kod tymczasowy po zakonczeniu sesji (dziala bez internetu)"** jest
+  **domyslnie wlaczony**. Po komendzie Stop kod pojawia sie przy sesji i jest odtwarzany;
+  przycisk "🔊 Zagraj kod …" pozwala puscic go ponownie (np. gdy kamera wtedy nie nagrywala).
+- Sesja z nadanym kodem **zawsze** zapisuje sie w cache — takze gdy tor i uczestnik nie sa
+  wypelnione (kod na nagraniu bez listy strzalow nie mialby wartosci).
+- Kod jest widoczny przy sesji w karcie "Sesje z cache" i trafia do bazy razem z wynikiem,
+  wiec Piro Overlay potrafi po nim odnalezc wpis — nawet jesli ID wpisu nigdy nie zagralo.
+- Drugi checkbox, **"Zapisz w bazie i zagraj sygnal ID po zakonczeniu sesji (wymaga internetu)"**,
+  dziala jak wczesniej: po Stop sesja zapisuje sie w bazie i odtwarzany jest sygnal z ID wpisu.
+  Oba sygnaly moga byc wlaczone naraz — nigdy nie nakladaja sie na siebie, graja po kolei.
+
+### Kopia zapasowa cache (eksport / import)
+
+Cache sesji zyje w pamieci jednej przegladarki na jednym urzadzeniu — wyczyszczenie danych
+witryny skasowaloby caly dzien zawodow. W karcie "Sesje z cache" sa dwa przyciski:
+
+- **"Eksportuj do pliku"** — zapisuje wszystkie sesje (ze strzalami, etykietami, kodami
+  tymczasowymi i numerami wpisow w bazie) do pliku `sgtimer-cache-RRRR-MM-DD.json`
+- **"Wczytaj z pliku"** — **scala** zawartosc pliku z tym, co juz jest w przegladarce: nowe
+  sesje dopisuje, a w istniejacych uzupelnia tylko brakujace dane. Wlasne poprawki (np.
+  poprawione nazwisko) i przypisane numery wpisow w bazie nie sa nadpisywane. Dzieki temu
+  mozna scalic sesje z kilku tabletow na jednym urzadzeniu.
 
 ### Sygnal tonowy ID (dla Piro Overlay)
 
-Po zapisie w bazie telefon moze odtworzyc otrzymane ID jako sekwencje tonow (marker +
-4 cyfry + cyfra kontrolna, pasmo 5000-7000 Hz) - aplikacja [Piro Overlay](https://github.com/enclude/congenial-octo-memory),
-nakladajaca info o strzalach na wideo, odczytuje ten sygnal z mikrofonu kamery i
-uzupelnia ID sesji automatycznie, bez recznego wpisywania.
+Telefon moze odtworzyc identyfikator sesji jako sekwencje tonow - aplikacja
+[Piro Overlay](https://github.com/enclude/congenial-octo-memory), nakladajaca info o strzalach
+na wideo, odczytuje ten sygnal z mikrofonu kamery i uzupelnia sesje automatycznie, bez recznego
+wpisywania.
 
-- Checkbox **"Zagraj sygnal ID po zapisie"** (karta "Dane do kalkulatora", domyslnie
-  wylaczony, zapamietywany w przegladarce) - gdy zaznaczony, sygnal gra automatycznie
-  zaraz po zapisie.
+Protokol (wersja 3): marker + **cyfra kanalu** + 4 cyfry wartosci + cyfra kontrolna, pasmo
+5000-7000 Hz, kazdy ton 0,3 s, cala sekwencja powtarzana dwa razy.
+
+| Kanal | Wartosc | Kiedy |
+|-------|---------|-------|
+| `0` | ID wpisu w bazie kalkulatora | po zapisie w bazie (wymaga internetu) |
+| `1`-`9` | kod tymczasowy (kanal = nr stanowiska) | zaraz po zakonczeniu sesji, takze offline |
+
+- Checkbox **"Zapisz w bazie i zagraj sygnal ID po zakonczeniu sesji (wymaga internetu)"**
+  (karta "Dane do kalkulatora", domyslnie wylaczony, zapamietywany w przegladarce) - gdy
+  zaznaczony, sesja po Stop zapisuje sie w bazie, a sygnal z ID gra automatycznie.
 - Przycisk **"🔊 Zagraj sygnal ID"** pojawia sie zawsze przy komunikacie "Zapisano!"
   (obok "Zapisz w bazie", tak przy sesji zywej, jak i historii/cache) - pozwala puscic
   sygnal jeszcze raz, np. gdy kamera nie nagrywala w danym momencie.
-- Dziala tylko dla ID 0-9999 (limit 4-cyfrowego protokolu) - dla wiekszych ID sygnal
+- Dziala tylko dla wartosci 0-9999 (limit 4-cyfrowego protokolu) - dla wiekszych ID sygnal
   nie jest odtwarzany (zamiast odtworzyc ucieta, blednie wygladajaca wartosc).
+- Gdy graja oba sygnaly (kod tymczasowy i ID), ida jeden po drugim - nigdy sie nie nakladaja.
+
+**Uwaga dla integratorow:** wersja 3 nie jest zgodna z wersja 2 (bez cyfry kanalu). Aplikacja,
+dekoder w Piro Overlay i kalkulator musza uzywac tych samych czestotliwosci i czasow.
 
 ### PAR_SETUP
 
@@ -173,6 +253,11 @@ Stopka czyta wersje bezposrednio z katalogu `.git` (serwer jest wdrazany przez `
 w cronie): hash commitu z `HEAD`/refs jako klikalny link do GitHub oraz date wdrozenia
 (`filemtime` refa). Dostep HTTP do `.git` jest zablokowany w `.htaccess`. Gdy katalogu
 `.git` brak, wersja nie jest wyswietlana.
+
+Ten sam hash steruje trybem offline: service worker jest rejestrowany jako `sw.js?v=<hash>`,
+wiec kazde wdrozenie to nowy adres workera i nowa kopia strony w pamieci offline (stare kopie
+sa kasowane). Pliki `sw.js` i `manifest.json` sa serwowane z `Cache-Control: no-cache`, zeby
+przegladarka nie trzymala w nieskonczonosc starej wersji aplikacji.
 
 ### Testowane urzadzenia
 

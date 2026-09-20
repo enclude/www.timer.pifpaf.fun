@@ -1,3 +1,42 @@
+<?php
+// Version read straight from .git (server is deployed via cron git pull), so the
+// footer always shows the commit that is actually live. Defined here, not in the
+// footer, because <head> needs it too: the service worker is registered as
+// /sw.js?v=<hash>, so every deploy is a new worker URL (and a fresh shell cache).
+function appVersion() {
+    $gitDir = __DIR__ . '/.git';
+    $head = @file_get_contents($gitDir . '/HEAD');
+    if ($head === false) return null;
+    $head = trim($head);
+    $hash = '';
+    $deployedAt = false;
+    if (strpos($head, 'ref:') === 0) {
+        $refName = trim(substr($head, 4));
+        $refPath = $gitDir . '/' . $refName;
+        $ref = @file_get_contents($refPath);
+        if ($ref !== false) {
+            $hash = trim($ref);
+            $deployedAt = @filemtime($refPath);
+        } else {
+            // Ref may be packed (after git gc)
+            $packed = @file_get_contents($gitDir . '/packed-refs');
+            if ($packed !== false
+                && preg_match('/^([0-9a-f]{40})\s+' . preg_quote($refName, '/') . '$/m', $packed, $m)) {
+                $hash = $m[1];
+            }
+        }
+    } else {
+        $hash = $head; // detached HEAD
+        $deployedAt = @filemtime($gitDir . '/HEAD');
+    }
+    if (!preg_match('/^[0-9a-f]{40}$/', $hash)) return null;
+    return ['hash' => $hash, 'deployedAt' => $deployedAt];
+}
+$appVer = appVersion();
+// No .git (e.g. local copy) = "dev": the worker URL then never changes, which is
+// exactly right outside a deployment.
+$appVerTag = $appVer ? substr($appVer['hash'], 0, 7) : 'dev';
+?>
 <!DOCTYPE html>
 <html lang="pl">
 <head>
@@ -5,6 +44,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Odczyt sesji strzeleckiej</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='45' fill='%230f3d3e'/><circle cx='50' cy='50' r='3' fill='white'/><circle cx='50' cy='50' r='35' fill='none' stroke='white' stroke-width='2'/><line x1='50' y1='15' x2='50' y2='25' stroke='white' stroke-width='3'/><line x1='50' y1='50' x2='50' y2='25' stroke='white' stroke-width='2'/><line x1='50' y1='50' x2='70' y2='50' stroke='white' stroke-width='2'/></svg>">
+    <meta name="theme-color" content="#0f3d3e">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="SG Timer">
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icons/icon-192.png">
     <style>
         :root {
             --primary: #0f3d3e;
@@ -305,6 +350,47 @@
             box-shadow: 0 0 0 3px var(--focus-glow);
         }
 
+        .field-group select {
+            padding: 10px 12px;
+            border: 2px solid var(--border-light);
+            border-radius: 6px;
+            font-size: 0.95rem;
+            font-family: inherit;
+            background: white;
+            cursor: pointer;
+        }
+
+        .field-group select:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--focus-glow);
+        }
+
+        /* Locally assigned offline code — outlined, so it never reads like the
+           database ID badge next to it */
+        .cache-temp-badge {
+            display: inline-block;
+            padding: 1px 6px;
+            border-radius: 4px;
+            border: 1px solid var(--accent);
+            color: var(--accent);
+            font-size: 0.75rem;
+            font-weight: 600;
+            margin-right: 6px;
+        }
+
+        #syncBanner {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        #syncBanner .btn-small {
+            margin-top: 0;
+        }
+
         .checkbox-row {
             display: flex;
             align-items: center;
@@ -563,6 +649,12 @@
             Firefox i Safari nie sa wspierane.
         </div>
 
+        <!-- Offline mode / sessions waiting to reach the database -->
+        <div id="syncBanner" class="alert hidden">
+            <span id="syncBannerText"></span>
+            <button id="btnSyncNow" class="btn btn-outline btn-small hidden">Wyślij zaległe do bazy</button>
+        </div>
+
         <!-- Connection Card -->
         <div class="card">
             <h2>Polaczenie Bluetooth</h2>
@@ -615,10 +707,28 @@
                     <label for="inputUczestnik">Uczestnik</label>
                     <input type="text" id="inputUczestnik" placeholder="np. Jan Kowalski">
                 </div>
+                <div class="field-group">
+                    <label for="inputStation">Nr stanowiska (kod tymczasowy)</label>
+                    <select id="inputStation">
+                        <option value="1">1</option>
+                        <option value="2">2</option>
+                        <option value="3">3</option>
+                        <option value="4">4</option>
+                        <option value="5">5</option>
+                        <option value="6">6</option>
+                        <option value="7">7</option>
+                        <option value="8">8</option>
+                        <option value="9">9</option>
+                    </select>
+                </div>
             </div>
+            <label class="checkbox-row" for="inputPlayTempTone">
+                <input type="checkbox" id="inputPlayTempTone" checked>
+                Zagraj kod tymczasowy po zakończeniu sesji (działa bez internetu)
+            </label>
             <label class="checkbox-row" for="inputPlayIdTone">
                 <input type="checkbox" id="inputPlayIdTone">
-                Zagraj sygnał ID po zapisie (do synchronizacji z kamerą)
+                Zapisz w bazie i zagraj sygnał ID po zakończeniu sesji (wymaga internetu)
             </label>
         </div>
 
@@ -700,6 +810,7 @@
                     Zapisz w bazie
                 </button>
             </div>
+            <div id="liveTempCode" class="db-save-status hidden" style="margin-top: 8px; text-align: right;"></div>
             <div id="dbSaveStatusLive" class="db-save-status hidden" style="margin-top: 8px; text-align: right;"></div>
         </div>
 
@@ -768,6 +879,23 @@
                     </svg>
                     Wyślij wszystkie do bazy
                 </button>
+                <button id="btnExportCache" class="btn btn-outline">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                        <polyline points="7 10 12 15 17 10"/>
+                        <line x1="12" y1="15" x2="12" y2="3"/>
+                    </svg>
+                    Eksportuj do pliku
+                </button>
+                <button id="btnImportCache" class="btn btn-outline">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                        <polyline points="17 8 12 3 7 8"/>
+                        <line x1="12" y1="3" x2="12" y2="15"/>
+                    </svg>
+                    Wczytaj z pliku
+                </button>
+                <input type="file" id="inputImportCache" accept="application/json,.json" class="hidden">
             </div>
             <label class="checkbox-row" for="inputBulkOverwrite" style="margin-top: 10px;">
                 <input type="checkbox" id="inputBulkOverwrite">
@@ -861,38 +989,7 @@
             Kompatybilny z SG Timer Sport i SG Timer GO (BLE API 3.2)
         </p>
         <?php
-        // Version read straight from .git (server is deployed via cron git pull),
-        // so the footer always shows the commit that is actually live.
-        function appVersion() {
-            $gitDir = __DIR__ . '/.git';
-            $head = @file_get_contents($gitDir . '/HEAD');
-            if ($head === false) return null;
-            $head = trim($head);
-            $hash = '';
-            $deployedAt = false;
-            if (strpos($head, 'ref:') === 0) {
-                $refName = trim(substr($head, 4));
-                $refPath = $gitDir . '/' . $refName;
-                $ref = @file_get_contents($refPath);
-                if ($ref !== false) {
-                    $hash = trim($ref);
-                    $deployedAt = @filemtime($refPath);
-                } else {
-                    // Ref may be packed (after git gc)
-                    $packed = @file_get_contents($gitDir . '/packed-refs');
-                    if ($packed !== false
-                        && preg_match('/^([0-9a-f]{40})\s+' . preg_quote($refName, '/') . '$/m', $packed, $m)) {
-                        $hash = $m[1];
-                    }
-                }
-            } else {
-                $hash = $head; // detached HEAD
-                $deployedAt = @filemtime($gitDir . '/HEAD');
-            }
-            if (!preg_match('/^[0-9a-f]{40}$/', $hash)) return null;
-            return ['hash' => $hash, 'deployedAt' => $deployedAt];
-        }
-        $ver = appVersion();
+        $ver = $appVer;
         if ($ver) {
             echo '<p style="margin-top: 4px; font-size: 0.75rem; opacity: 0.6;">';
             echo 'wersja: <a href="https://github.com/enclude/www.timer.pifpaf.fun/commit/' . $ver['hash']
@@ -1023,6 +1120,15 @@
         inputNazwaToru: document.getElementById('inputNazwaToru'),
         inputUczestnik: document.getElementById('inputUczestnik'),
         inputPlayIdTone: document.getElementById('inputPlayIdTone'),
+        inputPlayTempTone: document.getElementById('inputPlayTempTone'),
+        inputStation: document.getElementById('inputStation'),
+        liveTempCode: document.getElementById('liveTempCode'),
+        syncBanner: document.getElementById('syncBanner'),
+        syncBannerText: document.getElementById('syncBannerText'),
+        btnSyncNow: document.getElementById('btnSyncNow'),
+        btnExportCache: document.getElementById('btnExportCache'),
+        btnImportCache: document.getElementById('btnImportCache'),
+        inputImportCache: document.getElementById('inputImportCache'),
         parCard: document.getElementById('parCard'),
         inputParTime: document.getElementById('inputParTime'),
         inputParShots: document.getElementById('inputParShots'),
@@ -1079,6 +1185,65 @@
         } catch (e) {
             console.warn('localStorage unavailable:', e);
         }
+    }
+
+    // Station number + "play the temporary code" preference (localStorage).
+    // The station number is the ID-tone CHANNEL: 0 is reserved for database
+    // entry IDs, so stations run 1-9 and every stage gets its own code space.
+    const STORAGE_KEY_STATION = 'sgtimer_station';
+    const STORAGE_KEY_PLAY_TEMP_TONE = 'sgtimer_play_temp_tone';
+    const STORAGE_KEY_TEMP_COUNTER = 'sgtimer_temp_counter';
+
+    function loadTempCodePrefs() {
+        try {
+            const station = parseInt(localStorage.getItem(STORAGE_KEY_STATION), 10);
+            if (station >= 1 && station <= 9) elements.inputStation.value = String(station);
+            const raw = localStorage.getItem(STORAGE_KEY_PLAY_TEMP_TONE);
+            // Default ON: at the range the temporary code is the only identifier
+            // that is guaranteed to exist the moment the session ends.
+            if (raw !== null) elements.inputPlayTempTone.checked = raw === '1';
+        } catch (e) {
+            console.warn('localStorage unavailable:', e);
+        }
+    }
+
+    function saveTempCodePrefs() {
+        try {
+            localStorage.setItem(STORAGE_KEY_STATION, elements.inputStation.value);
+            localStorage.setItem(STORAGE_KEY_PLAY_TEMP_TONE, elements.inputPlayTempTone.checked ? '1' : '0');
+        } catch (e) {
+            console.warn('localStorage unavailable:', e);
+        }
+    }
+
+    function getStation() {
+        const n = parseInt(elements.inputStation.value, 10);
+        return (n >= 1 && n <= 9) ? n : 1;
+    }
+
+    // Hand out the next temporary code for this browser: station digit +
+    // a 4-digit counter. Counter and station are both persisted, so a page
+    // reload (or a crash) never re-issues the code of an earlier session.
+    function nextTempId() {
+        let counter = 0;
+        try {
+            counter = parseInt(localStorage.getItem(STORAGE_KEY_TEMP_COUNTER), 10) || 0;
+        } catch (e) {
+            console.warn('localStorage unavailable:', e);
+        }
+        counter = (counter + 1) % 10000;
+        try {
+            localStorage.setItem(STORAGE_KEY_TEMP_COUNTER, String(counter));
+        } catch (e) {
+            console.warn('localStorage unavailable:', e);
+        }
+        return `${getStation()}${String(counter).padStart(4, '0')}`;
+    }
+
+    // Wire format is 5 digits ("30147"); humans read it as "3-0147"
+    function formatTempId(tempId) {
+        const t = String(tempId || '');
+        return /^\d{5}$/.test(t) ? `${t[0]}-${t.slice(1)}` : t;
     }
 
     // Persist PAR limits (time limit / shot limit) per browser (localStorage)
@@ -1268,6 +1433,8 @@
         const cache = readSessionCache();
         elements.cacheList.innerHTML = '';
 
+        updateSyncBanner();
+
         if (!cache || cache.sessions.length === 0) {
             elements.cacheCard.classList.add('hidden');
             return;
@@ -1316,10 +1483,20 @@
                 labelEl.textContent = label;
                 labelEl.classList.remove('hidden');
             }
+            // Temporary code (played as a tone at the stage) — shown next to
+            // the database status, so one glance says how the recording can be
+            // matched: by the code, by the entry ID, or by neither yet
+            const dbEl = li.querySelector('.cache-db');
+            if (session.tempId) {
+                const tempBadge = document.createElement('span');
+                tempBadge.className = 'cache-temp-badge';
+                tempBadge.textContent = `kod ${formatTempId(session.tempId)}`;
+                dbEl.appendChild(tempBadge);
+                dbEl.classList.remove('hidden');
+            }
             // Database status: entry ID badge + edit link (only when this
             // browser holds the per-entry edit token)
             if (session.dbId) {
-                const dbEl = li.querySelector('.cache-db');
                 const badge = document.createElement('span');
                 badge.className = 'cache-db-badge';
                 badge.textContent = `w bazie #${session.dbId}`;
@@ -1354,10 +1531,13 @@
 
     // Auto-save a finished live session into the cache — only when both
     // stage name and participant are filled in "Dane do kalkulatora"
-    function saveLiveSessionToCache(sessId, shots, startDelay, parTime, parShots) {
+    function saveLiveSessionToCache(sessId, shots, startDelay, parTime, parShots, tempId) {
         const nazwaToru = elements.inputNazwaToru.value.trim();
         const uczestnik = elements.inputUczestnik.value.trim();
-        if (!nazwaToru || !uczestnik || !sessId || shots.length === 0) return false;
+        if (!sessId || shots.length === 0) return false;
+        // A session that was given a temporary code goes to the cache no matter
+        // what: the tone on the recording points at THIS shot list
+        if (!tempId && (!nazwaToru || !uczestnik)) return false;
 
         const cache = readSessionCache() || { savedAt: sessId, sessions: [] };
         const entry = {
@@ -1370,11 +1550,13 @@
         if (parTime > 0) entry.parTime = parTime;
         if (parShots > 0) entry.parShots = parShots;
         if (deviceSerial) entry.timerSn = deviceSerial;
+        if (tempId) entry.tempId = tempId;
         const idx = cache.sessions.findIndex(s => s.sessId === sessId);
         if (idx >= 0) {
             const old = cache.sessions[idx];
             if (old.dbId) entry.dbId = old.dbId;
             if (old.dbEditToken) entry.dbEditToken = old.dbEditToken;
+            if (!entry.tempId && old.tempId) entry.tempId = old.tempId;
             cache.sessions[idx] = entry;
         } else {
             cache.sessions.push(entry);
@@ -1402,6 +1584,7 @@
                 if (typeof old.parTime === 'number') s.parTime = old.parTime;
                 if (typeof old.parShots === 'number') s.parShots = old.parShots;
                 if (old.timerSn && !s.timerSn) s.timerSn = old.timerSn;
+                if (old.tempId && !s.tempId) s.tempId = old.tempId;
                 if (old.dbId) s.dbId = old.dbId;
                 if (old.dbEditToken) s.dbEditToken = old.dbEditToken;
             }
@@ -1473,7 +1656,7 @@
         const payload = buildSavePayload(entry.shots, {
             sessId: entry.sessId, nazwaToru: entry.nazwaToru, uczestnik: entry.uczestnik,
             startDelay: entry.startDelay, parTime: entry.parTime, parShots: entry.parShots,
-            timerSn: entry.timerSn || deviceSerial, noFormFallback: true,
+            timerSn: entry.timerSn || deviceSerial, tempId: entry.tempId, noFormFallback: true,
             overwrite: true, dbId: entry.dbId, dbEditToken: entry.dbEditToken
         }, true);
         if (!payload || !payload.overwrite) {
@@ -1501,6 +1684,104 @@
         } catch (e) {
             statusEl.classList.add('error');
             statusEl.textContent = 'Błąd połączenia';
+        }
+    }
+
+    // How many cached sessions still have no row in the calculator database
+    function pendingUploadCount() {
+        const cache = readSessionCache();
+        if (!cache) return 0;
+        return cache.sessions.filter(s => s.shots && s.shots.length > 0 && !s.dbId).length;
+    }
+
+    // One banner answers the only two questions that matter at a stage with bad
+    // internet: am I offline, and how much is still waiting to reach the base.
+    // Nothing is sent automatically — an unattended POST burst on a flaky link
+    // is exactly what the bulk lookup exists to avoid.
+    function updateSyncBanner() {
+        const pending = pendingUploadCount();
+        const offline = !navigator.onLine;
+        elements.syncBanner.classList.remove('alert-warning', 'alert-info');
+        elements.btnSyncNow.classList.add('hidden');
+
+        if (offline) {
+            elements.syncBanner.classList.add('alert-warning');
+            elements.syncBannerText.textContent = pending > 0
+                ? `Tryb offline — timer, kody tymczasowe i cache działają dalej. Sesji do wysłania: ${pending}.`
+                : 'Tryb offline — timer, kody tymczasowe i cache działają dalej.';
+            elements.syncBanner.classList.remove('hidden');
+            return;
+        }
+        if (pending > 0) {
+            elements.syncBanner.classList.add('alert-info');
+            elements.syncBannerText.textContent = `Sesji w cache bez wpisu w bazie: ${pending}.`;
+            elements.btnSyncNow.classList.remove('hidden');
+            elements.syncBanner.classList.remove('hidden');
+            return;
+        }
+        elements.syncBanner.classList.add('hidden');
+    }
+
+    // Export the whole cache to a file — localStorage is one browser on one
+    // tablet; a cleared site setting would otherwise take the whole day with it
+    function exportCacheToFile() {
+        const cache = readSessionCache();
+        if (!cache || cache.sessions.length === 0) {
+            alert('Cache jest pusty — nie ma czego eksportować.');
+            return;
+        }
+        const blob = new Blob([JSON.stringify(cache, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        const day = new Date().toISOString().slice(0, 10);
+        a.download = `sgtimer-cache-${day}.json`;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    // Merge a previously exported file back in. Merge, never replace: the file
+    // may come from another tablet, and a session already saved here keeps its
+    // database ID and its (possibly corrected) labels.
+    async function importCacheFromFile(file) {
+        let incoming;
+        try {
+            incoming = JSON.parse(await file.text());
+        } catch (e) {
+            alert('Nie udało się odczytać pliku: ' + e.message);
+            return;
+        }
+        if (!incoming || !Array.isArray(incoming.sessions)) {
+            alert('To nie jest plik cache sesji.');
+            return;
+        }
+        const cache = readSessionCache() || { savedAt: Math.floor(Date.now() / 1000), sessions: [] };
+        const byId = new Map(cache.sessions.map(s => [s.sessId, s]));
+        let added = 0, merged = 0;
+        incoming.sessions.forEach(inc => {
+            if (!inc || !inc.sessId || !Array.isArray(inc.shots)) return;
+            const cur = byId.get(inc.sessId);
+            if (!cur) {
+                cache.sessions.push(inc);
+                byId.set(inc.sessId, inc);
+                added++;
+                return;
+            }
+            // Fill in only what is missing locally
+            ['nazwaToru', 'uczestnik', 'timerSn', 'tempId', 'dbEditToken'].forEach(k => {
+                if (!cur[k] && inc[k]) cur[k] = inc[k];
+            });
+            ['startDelay', 'parTime', 'parShots'].forEach(k => {
+                if (typeof cur[k] !== 'number' && typeof inc[k] === 'number') cur[k] = inc[k];
+            });
+            if (!cur.dbId && inc.dbId) cur.dbId = inc.dbId;
+            if ((!cur.shots || cur.shots.length === 0) && inc.shots.length > 0) cur.shots = inc.shots;
+            merged++;
+        });
+        cache.sessions.sort((a, b) => b.sessId - a.sessId);
+        if (writeSessionCache(cache)) {
+            renderCacheCard();
+            alert(`Wczytano z pliku: nowych sesji ${added}, scalonych ${merged}.`);
         }
     }
 
@@ -1764,7 +2045,9 @@
             startDelay: startDelay,
             // PAR limits stored on the device when this session began
             parTime: lastWrittenPar ? lastWrittenPar.time : 0,
-            parShots: lastWrittenPar ? lastWrittenPar.shots : 0
+            parShots: lastWrittenPar ? lastWrittenPar.shots : 0,
+            // Assigned when the session ends (see handleSessionStopped)
+            tempId: ''
         };
 
         elements.sessionStatus.textContent = `Sesja rozpoczeta (opoznienie: ${startDelay}s)`;
@@ -1777,6 +2060,8 @@
         elements.btnSaveToDb.classList.add('hidden');
         elements.btnSaveToDb.disabled = false;
         elements.dbSaveStatusLive.classList.add('hidden');
+        elements.liveTempCode.classList.add('hidden');
+        elements.liveTempCode.innerHTML = '';
         elements.liveShotsCard.classList.remove('hidden');
         elements.liveShotsBody.innerHTML = '';
 
@@ -1826,14 +2111,34 @@
             elements.btnSaveToDb.classList.remove('hidden');
         }
 
-        // Auto-cache the finished session when tor + uczestnik are filled in
+        // Temporary code: assigned and played LOCALLY the moment the session
+        // ends, so the recording carries an identifier even with no internet
+        // (the database ID may arrive minutes later — or only in the evening).
+        let tempId = '';
+        if (totalShots > 0 && elements.inputPlayTempTone.checked) {
+            tempId = nextTempId();
+            currentSession.tempId = tempId;
+        }
+
+        // Auto-cache the finished session when tor + uczestnik are filled in —
+        // or always when a temporary code was issued (a code on the recording
+        // is worthless without the shot list it points at)
         if (saveLiveSessionToCache(sessId, currentSession.shots, currentSession.startDelay,
-                currentSession.parTime, currentSession.parShots)) {
+                currentSession.parTime, currentSession.parShots, tempId)) {
             elements.sessionStatus.textContent += ' · zapisano w cache';
+        }
+
+        if (tempId) {
+            elements.sessionStatus.textContent += ` · kod ${formatTempId(tempId)}`;
+            elements.liveTempCode.textContent = `Kod tymczasowy: ${formatTempId(tempId)}`;
+            elements.liveTempCode.classList.remove('hidden');
+            addTempToneReplayButton(elements.liveTempCode, tempId);
+            playTempIdTone(tempId);
         }
 
         // When the ID-tone checkbox is on, skip the manual "Zapisz w bazie" click —
         // save straight away so the tone plays right after the session ends
+        // (queued behind the temporary code, never overlapping it)
         if (totalShots > 0 && elements.inputPlayIdTone.checked) {
             saveToDatabase();
         }
@@ -2232,17 +2537,26 @@
         elements.shotsTable.classList.remove('hidden');
 
         // Store for calculator export (cached sessions carry their labels)
-        historySession = { sessId, shots, nazwaToru: labels.nazwaToru, uczestnik: labels.uczestnik, startDelay: labels.startDelay, parTime: labels.parTime, parShots: labels.parShots, timerSn: labels.timerSn || deviceSerial, dbId: labels.dbId, dbEditToken: labels.dbEditToken };
+        historySession = { sessId, shots, nazwaToru: labels.nazwaToru, uczestnik: labels.uczestnik, startDelay: labels.startDelay, parTime: labels.parTime, parShots: labels.parShots, timerSn: labels.timerSn || deviceSerial, tempId: labels.tempId, dbId: labels.dbId, dbEditToken: labels.dbEditToken };
         elements.btnSendHistoryToCalc.classList.remove('hidden');
         elements.btnSaveHistoryToDb.classList.remove('hidden');
         elements.btnSaveHistoryToDb.disabled = false;
         elements.dbSaveStatusHistory.classList.add('hidden');
         elements.dbSaveStatusHistory.classList.remove('error');
         elements.dbSaveStatusHistory.textContent = '';
+        if (labels.tempId && !labels.dbId) {
+            // Not in the database yet — the recording can still be matched by
+            // the temporary code played at the stage
+            elements.dbSaveStatusHistory.textContent = `Kod tymczasowy: ${formatTempId(labels.tempId)}`;
+            addTempToneReplayButton(elements.dbSaveStatusHistory, labels.tempId);
+            elements.dbSaveStatusHistory.classList.remove('hidden');
+        }
         if (labels.dbId) {
             // Already in the database (from bulk save or lookup) — say so,
             // but leave manual re-save possible
-            elements.dbSaveStatusHistory.textContent = `W bazie: ID #${labels.dbId}`;
+            elements.dbSaveStatusHistory.textContent = labels.tempId
+                ? `Kod tymczasowy: ${formatTempId(labels.tempId)} · w bazie: ID #${labels.dbId}`
+                : `W bazie: ID #${labels.dbId}`;
             addIdToneReplayButton(elements.dbSaveStatusHistory, labels.dbId);
             if (labels.dbEditToken) {
                 addDbEditLinkButton(elements.dbSaveStatusHistory, labels.dbId, labels.dbEditToken);
@@ -2337,45 +2651,72 @@
     const KALKULATOR_EDIT_URL = 'https://piro-kalkulator.pifpaf.fun/edit.php';
     const KALKULATOR_LOOKUP_URL = 'https://piro-kalkulator.pifpaf.fun/api_lookup.php';
 
-    // ID tone signalling — lets Piro Overlay decode the saved session ID
+    // ID tone signalling — lets Piro Overlay decode the session identifier
     // straight from the camera's audio track (no manual typing on import).
-    // Protocol v2 — MUST match piro_overlay.audio_sync.decode_id_tone (and
+    // Protocol v3 — MUST match piro_overlay.audio_sync.decode_id_tone (and
     // id_tone.js in the calculator) exactly: marker 5000 Hz ("code starts
-    // here") + 4 digit tones + 1 checksum tone (position-weighted sum mod 10,
-    // see idToneChecksum), one of 10 frequencies 5200-7000 Hz (step 200 Hz)
-    // per digit 0-9, 300ms tone + 50ms gap each, whole sequence repeated
-    // twice for redundancy. Band sits above the shot-timer buzzer band
-    // (2000-4500 Hz) and below the Nyquist of Piro Overlay's 16kHz audio
-    // extraction (8kHz). v2 rationale (measured on a real DJI recording of a
-    // distant phone): tones >7kHz faded in the speaker->mic->AAC chain, so
-    // the band top dropped from 7500 Hz; longer tones survive AAC eating the
-    // quiet tail; the checksum lets the decoder reject a misread instead of
-    // fetching someone else's session. NOT backward compatible with v1.
+    // here") + CHANNEL digit + 4 value digits + checksum digit (position-
+    // weighted sum over all 5 digits mod 10, see idToneChecksum), one of 10
+    // frequencies 5200-7000 Hz (step 200 Hz) per digit 0-9, 300ms tone + 50ms
+    // gap each, whole sequence repeated twice for redundancy.
+    //   channel 0   = the value is the calculator entry ID (needs the session
+    //                 to be saved in the database, so it needs internet)
+    //   channel 1-9 = the value is a TEMPORARY code and the channel is the
+    //                 station number — generated locally, so it works with no
+    //                 internet at all and is played the moment the session ends
+    // Band sits above the shot-timer buzzer band (2000-4500 Hz) and below the
+    // Nyquist of Piro Overlay's 16kHz audio extraction (8kHz). Rationale for
+    // the band and timings (measured on a real DJI recording of a distant
+    // phone): tones >7kHz faded in the speaker->mic->AAC chain, longer tones
+    // survive AAC eating the quiet tail, and the checksum lets the decoder
+    // reject a misread instead of fetching someone else's session.
+    // v3 added the channel digit; NOT compatible with v2 (one marker + 4
+    // digits), so all three repositories change together.
     const ID_TONE_MARKER_FREQ = 5000;
     const ID_TONE_DIGIT_FREQS = Array.from({ length: 10 }, (_, d) => 5200 + d * 200);
     const ID_TONE_TONE_DUR = 0.30;
     const ID_TONE_GAP = 0.05;
     const ID_TONE_REPEATS = 2;
     const ID_TONE_REPEAT_GAP = 0.3;
-    const ID_TONE_MAX_ID = 9999;
+    const ID_TONE_MAX_VALUE = 9999;
+    const ID_TONE_CHANNEL_DB = 0;
 
-    // MUST match piro_overlay.audio_sync._id_tone_checksum.
+    // MUST match piro_overlay.audio_sync._id_tone_checksum (weights 1..5 over
+    // [channel, 4 value digits]).
     function idToneChecksum(digits) {
         return digits.reduce((acc, d, i) => acc + (i + 1) * d, 0) % 10;
     }
 
-    function playIdTone(sessionId) {
-        const id = Number(sessionId);  // API może zwrócić id jako string
-        if (!Number.isInteger(id) || id < 0 || id > ID_TONE_MAX_ID) {
-            // Protocol only carries 4 digits — playing a truncated ID would
-            // silently decode as a WRONG (but valid-looking) session on the
-            // other end, which is worse than not signalling at all.
-            console.warn(`playIdTone: ID ${sessionId} poza zasięgiem protokołu (0-${ID_TONE_MAX_ID}) — nie odtwarzam.`);
-            return;
+    // Tones are queued, never overlapped: with auto-save on, the database ID
+    // tone would otherwise start while the temporary code is still playing and
+    // both would decode as garbage.
+    let toneChain = Promise.resolve();
+
+    function queueIdToneFrame(channel, value) {
+        toneChain = toneChain.then(() => new Promise(resolve => {
+            const seconds = playIdToneFrame(channel, value);
+            setTimeout(resolve, seconds * 1000 + 150);
+        }));
+    }
+
+    // Plays one frame and returns its length in seconds (0 = nothing played).
+    function playIdToneFrame(channel, value) {
+        const ch = Number(channel);
+        const val = Number(value);
+        if (!Number.isInteger(ch) || ch < 0 || ch > 9) {
+            console.warn(`playIdToneFrame: nieprawidłowy kanał ${channel} — nie odtwarzam.`);
+            return 0;
+        }
+        if (!Number.isInteger(val) || val < 0 || val > ID_TONE_MAX_VALUE) {
+            // The protocol only carries 4 digits — playing a truncated value
+            // would silently decode as a WRONG (but valid-looking) session on
+            // the other end, which is worse than not signalling at all.
+            console.warn(`playIdToneFrame: wartość ${value} poza zasięgiem protokołu (0-${ID_TONE_MAX_VALUE}) — nie odtwarzam.`);
+            return 0;
         }
         const AudioCtx = window.AudioContext || window.webkitAudioContext;
-        if (!AudioCtx) return;
-        const digits = String(id).padStart(4, '0').split('').map(Number);
+        if (!AudioCtx) return 0;
+        const digits = [ch, ...String(val).padStart(4, '0').split('').map(Number)];
         digits.push(idToneChecksum(digits));
 
         const ctx = new AudioCtx();
@@ -2386,7 +2727,8 @@
         osc.connect(gain).connect(ctx.destination);
 
         const ramp = 0.015;
-        let t = ctx.currentTime + 0.05;
+        const startedAt = ctx.currentTime;
+        let t = startedAt + 0.05;
         const playTone = (freq, dur) => {
             const at = t;
             const offAt = at + dur;
@@ -2411,6 +2753,22 @@
         const stopAt = t;
         osc.stop(stopAt);
         osc.onended = () => ctx.close();
+        return stopAt - startedAt;
+    }
+
+    // Database entry ID (channel 0)
+    function playIdTone(sessionId) {
+        queueIdToneFrame(ID_TONE_CHANNEL_DB, Number(sessionId));
+    }
+
+    // Locally assigned temporary code, "30147" or "3-0147"
+    function playTempIdTone(tempId) {
+        const t = String(tempId || '').replace('-', '');
+        if (!/^\d{5}$/.test(t)) {
+            console.warn(`playTempIdTone: nieprawidłowy kod ${tempId} — nie odtwarzam.`);
+            return;
+        }
+        queueIdToneFrame(Number(t[0]), Number(t.slice(1)));
     }
 
     function addIdToneReplayButton(statusEl, sessionId) {
@@ -2419,6 +2777,15 @@
         btn.className = 'btn btn-outline btn-small btn-id-tone-replay';
         btn.textContent = '🔊 Zagraj sygnał ID';
         btn.addEventListener('click', () => playIdTone(sessionId));
+        statusEl.appendChild(btn);
+    }
+
+    function addTempToneReplayButton(statusEl, tempId) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'btn btn-outline btn-small btn-id-tone-replay';
+        btn.textContent = `🔊 Zagraj kod ${formatTempId(tempId)}`;
+        btn.addEventListener('click', () => playTempIdTone(tempId));
         statusEl.appendChild(btn);
     }
 
@@ -2472,6 +2839,12 @@
 
         const payload = { liczba_strzalow: liczbaStrzalow, czas_bazowy: czasBazowy, opis, nazwa_toru: nazwaToru, uczestnik };
 
+        // Temporary code played at the stage — the calculator stores it so
+        // Piro Overlay can resolve a code decoded from audio to this entry
+        // (wire format is the bare 5 digits, never the display form "3-0147")
+        const tempId = String(overrides.tempId || '').replace('-', '');
+        if (/^[1-9]\d{4}$/.test(tempId)) payload.temp_id = tempId;
+
         // Timer serial number and device session ID (unixtime-like) — sent only when available
         const timerSn = (overrides.timerSn || deviceSerial || '').trim();
         if (timerSn) payload.timer_sn = timerSn;
@@ -2523,15 +2896,20 @@
             }
         } catch (e) {
             statusEl.classList.add('error');
-            statusEl.textContent = 'Błąd połączenia';
+            // Offline is the expected case at a range, not a failure: the
+            // session stays in the cache and goes out with "Wyślij zaległe".
+            statusEl.textContent = navigator.onLine
+                ? 'Błąd połączenia'
+                : 'Brak internetu — sesja czeka w cache';
             btn.disabled = false;
+            updateSyncBanner();
         }
     }
 
     // Save live session directly to database (no A/C/D scoring)
     function saveToDatabase() {
         const shots = currentSession.shots;
-        const payload = buildSavePayload(shots, { sessId: currentSession.id, startDelay: currentSession.startDelay, parTime: currentSession.parTime, parShots: currentSession.parShots }, false);
+        const payload = buildSavePayload(shots, { sessId: currentSession.id, startDelay: currentSession.startDelay, parTime: currentSession.parTime, parShots: currentSession.parShots, tempId: currentSession.tempId }, false);
         if (!payload) return;
         postToDatabase(payload, elements.btnSaveToDb, elements.dbSaveStatusLive,
             data => markCachedSessionSaved(currentSession.id, data.id, data.edit_token));
@@ -2539,13 +2917,13 @@
 
     // Save historical session directly to database (no A/C/D scoring)
     function saveHistoryToDatabase() {
-        const { sessId, shots, nazwaToru, uczestnik, startDelay, parTime, parShots, timerSn, dbId, dbEditToken } = historySession;
+        const { sessId, shots, nazwaToru, uczestnik, startDelay, parTime, parShots, timerSn, tempId, dbId, dbEditToken } = historySession;
         // Already in the database: OK = overwrite that row, Cancel = add a new one
         let overwrite = false;
         if (dbId) {
             overwrite = confirm(`Ta sesja jest już w bazie jako wpis #${dbId}. Nadpisać istniejący wpis?\n(Anuluj = dodaj jako nowy wpis)`);
         }
-        const payload = buildSavePayload(shots, { sessId, nazwaToru, uczestnik, startDelay, parTime, parShots, timerSn, overwrite, dbId, dbEditToken }, true);
+        const payload = buildSavePayload(shots, { sessId, nazwaToru, uczestnik, startDelay, parTime, parShots, timerSn, tempId, overwrite, dbId, dbEditToken }, true);
         if (!payload) return;
         postToDatabase(payload, elements.btnSaveHistoryToDb, elements.dbSaveStatusHistory,
             data => markCachedSessionSaved(sessId, data.id, data.edit_token));
@@ -2647,7 +3025,7 @@
                 const payload = buildSavePayload(s.shots, {
                     sessId: s.sessId, nazwaToru: s.nazwaToru, uczestnik: s.uczestnik,
                     startDelay: s.startDelay, parTime: s.parTime, parShots: s.parShots,
-                    timerSn: s.timerSn || deviceSerial, noFormFallback: true,
+                    timerSn: s.timerSn || deviceSerial, tempId: s.tempId, noFormFallback: true,
                     overwrite: overwrite && !!s.dbId, dbId: s.dbId, dbEditToken: s.dbEditToken
                 }, true);
                 if (!payload) continue;
@@ -2707,19 +3085,43 @@
     elements.btnSaveHistoryToDb.addEventListener('click', saveHistoryToDatabase);
     elements.inputNazwaToru.addEventListener('input', saveNazwaToru);
     elements.inputPlayIdTone.addEventListener('change', savePlayIdTonePref);
+    elements.inputPlayTempTone.addEventListener('change', saveTempCodePrefs);
+    elements.inputStation.addEventListener('change', saveTempCodePrefs);
+    elements.btnExportCache.addEventListener('click', exportCacheToFile);
+    elements.btnImportCache.addEventListener('click', () => elements.inputImportCache.click());
+    elements.inputImportCache.addEventListener('change', ev => {
+        const file = ev.target.files && ev.target.files[0];
+        if (file) importCacheFromFile(file);
+        ev.target.value = '';
+    });
+    elements.btnSyncNow.addEventListener('click', bulkSaveCacheToDatabase);
+    window.addEventListener('online', updateSyncBanner);
+    window.addEventListener('offline', updateSyncBanner);
     elements.inputParTime.addEventListener('input', saveParSetup);
     elements.inputParShots.addEventListener('input', saveParSetup);
     elements.btnWritePar.addEventListener('click', writeParToTimer);
     elements.btnResetPar.addEventListener('click', resetParOnTimer);
     elements.parCardHeader.addEventListener('click', toggleParCard);
 
+    // Offline support: the service worker caches the page shell so the app
+    // opens (and the whole BLE + cache workflow runs) with no internet at all.
+    // The version query makes every deploy a new worker URL — see sw.js.
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('sw.js?v=<?php echo htmlspecialchars($appVerTag, ENT_QUOTES); ?>')
+                .catch(err => console.warn('Service worker registration failed:', err));
+        });
+    }
+
     // Initialize
     checkBrowserSupport();
     loadNazwaToru();
     loadPlayIdTonePref();
+    loadTempCodePrefs();
     loadParSetup();
     loadParCardCollapsed();
     renderCacheCard();
+    updateSyncBanner();
     </script>
 </body>
 </html>

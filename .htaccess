@@ -29,6 +29,14 @@ Options -Indexes
 # Default charset
 AddDefaultCharset UTF-8
 
+# Service worker and manifest must never be served stale: a pinned sw.js would
+# keep an old page shell alive offline long after a deploy.
+<IfModule mod_headers.c>
+    <FilesMatch "^(sw\.js|manifest\.json)$">
+        Header set Cache-Control "no-cache, must-revalidate"
+    </FilesMatch>
+</IfModule>
+
 # Cache static assets
 <IfModule mod_expires.c>
     ExpiresActive On

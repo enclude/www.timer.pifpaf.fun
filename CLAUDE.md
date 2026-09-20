@@ -11,6 +11,9 @@ GitHub: [github.com/enclude/www.timer.pifpaf.fun](https://github.com/enclude/www
 
 ```
 index.php                           # Główny plik aplikacji (HTML + CSS + JS + PHP)
+sw.js                               # Service worker (tryb offline, cache powłoki)
+manifest.json                       # Manifest PWA (instalacja jako aplikacja)
+icons/                              # Ikony PWA: 192, 512 i maskable 512 (PNG)
 readme.md                           # Dokumentacja projektu (po polsku)
 docs/sg_timer_public_bt_api-32.pdf  # Dokumentacja BLE API (hasłem chroniona)
 docs/sg_timer_public_bt_api-32.png/ # Strony PDF jako PNG (czytelne)
@@ -23,7 +26,11 @@ screenshots/20260226/               # Screenshoty z testów z 26.02.2026
 Aplikacja to **single-file PHP/HTML/CSS/JS** — cała logika znajduje się w `index.php`:
 - **PHP** — rok w stopce + wersja z `.git` (funkcja `appVersion()`: hash z `HEAD`/refs/packed-refs,
   data wdrożenia z `filemtime` refa; deploy = cron `git pull` na serwerze, `.htaccess` blokuje
-  dostęp HTTP do `.git`; brak `.git` = brak wersji w stopce, np. lokalnie)
+  dostęp HTTP do `.git`; brak `.git` = brak wersji w stopce, np. lokalnie).
+  `appVersion()` jest wołana **na samej górze pliku** (`$appVer`, `$appVerTag`), nie w stopce —
+  `<head>` i rejestracja service workera potrzebują skróconego hasha (`sw.js?v=<hash>`);
+  stopka używa już gotowego `$appVer`. Brak `.git` = `$appVerTag === 'dev'`
+- **PWA** — `manifest.json`, `sw.js`, `icons/` (patrz „Tryb offline i PWA")
 - **HTML/CSS** — interfejs użytkownika
 - **JavaScript** — cała logika Bluetooth i obsługa UI
 
@@ -85,13 +92,51 @@ i do payloadu zapisu w bazie (`par_time_limit` [s, float] / `par_shot_limit` [in
 dokładane tylko gdy > 0). **Celowo NIE trafiają do `opis`** — Piro Overlay parsuje
 z opisu oś czasu strzałów i format opisu musi zostać bez zmian.
 
+## Tryb offline i PWA
+
+Na stanowisku strzeleckim internetu zwykle nie ma, a wszystko poza zapisem do bazy jest
+lokalne (Web Bluetooth, podgląd live, cache w `localStorage`, nadawanie i odtwarzanie kodów
+tymczasowych). Dlatego aplikacja jest instalowalna i otwiera się bez sieci:
+
+- `manifest.json` — `start_url`/`scope` = `/`, `display: standalone`, `orientation: portrait-primary`,
+  ikony z `icons/` (192, 512, maskable 512). W `<head>`: `link rel="manifest"`, `theme-color`
+  (`#0f3d3e`), `apple-touch-icon`, `apple-mobile-web-app-*`.
+- `sw.js` — service worker, **cache-first z odświeżaniem w tle** (aplikacja ma otwierać się
+  natychmiast; nowe wdrożenie łapie kolejne wejście albo precache nowego workera).
+  Precache powłoki: `/`, `/manifest.json`, ikony — pojedynczy brakujący plik **nie** przerywa
+  instalacji (`cache.add(...).catch(() => {})`). Każda nawigacja w scope trafia pod jeden klucz
+  `'/'` (to zawsze ta sama strona PHP, niezależnie od query stringu), a gdy nic nie ma w cache
+  i nie ma sieci — fallback na powłokę spod `'/'`.
+- Worker **nie dotyka** żądań innych niż `GET` ani cross-origin: POST-y i API kalkulatora
+  (`api_save.php`, `api_lookup.php`) zawsze idą po sieci — nieaktualna odpowiedź „co już jest
+  w bazie" oznaczałaby duplikaty wpisów.
+- Nazwa cache = `sgtimer-<VERSION>`, gdzie `VERSION` to `?v=` z URL-a workera (czyli hash
+  commita z `$appVerTag`, `dev` lokalnie). Każde wdrożenie = nowy URL workera = nowy cache;
+  `activate` kasuje pozostałe cache `sgtimer-*`, `skipWaiting()` + `clients.claim()`.
+- `.htaccess`: `Cache-Control: no-cache, must-revalidate` dla `sw.js` i `manifest.json` —
+  przypięty w cache worker trzymałby starą powłokę przy życiu długo po wdrożeniu.
+
+**Baner synchronizacji** (`#syncBanner`, `updateSyncBanner()`) — odpowiada na dwa pytania,
+które mają znaczenie na stanowisku ze słabym zasięgiem: czy jestem offline i ile jeszcze
+nie dotarło do bazy:
+- offline → `alert-warning`: „Tryb offline — timer, kody tymczasowe i cache działają dalej"
+  (+ liczba sesji do wysłania, gdy > 0),
+- online z zaległościami → `alert-info` + przycisk „Wyślij zaległe do bazy"
+  (ten sam `bulkSaveCacheToDatabase()`),
+- brak zaległości online → baner ukryty.
+
+`pendingUploadCount()` = sesje w cache, które mają strzały i **nie** mają `dbId`.
+`updateSyncBanner()` woła się przy starcie, z `renderCacheCard()`, po nieudanym zapisie
+i ze słuchaczy `window` `online`/`offline`. **Nic nie jest wysyłane automatycznie** —
+niepilnowana seria POST-ów po chwiejnym łączu to dokładnie to, przed czym broni hurtowy lookup.
+
 ## Cache sesji (localStorage)
 
 Przycisk "Pobierz sesje do cache" (`downloadSessionsToCache()`) zapisuje sesje z **dzisiaj**
 (od północy czasu urządzenia: `deviceNow - deviceNow % 86400`, domyślnie) lub z ostatnich 24h
 (select `cacheRange`) wraz z pełnymi listami strzałów w `localStorage` pod kluczem `sgtimer_session_cache`
 (format: `{ savedAt, sessions: [{ sessId, shots: [{num, time}], nazwaToru?, uczestnik?, timerSn?,
-dbId?, dbEditToken? }] }`, najnowsze pierwsze). `timerSn` = nazwa urządzenia BLE (numer seryjny, zmienna `deviceSerial`)
+tempId?, dbId?, dbEditToken? }] }`, najnowsze pierwsze). `timerSn` = nazwa urządzenia BLE (numer seryjny, zmienna `deviceSerial`)
 z chwili pobrania/auto-zapisu — pokazywana przy sesji w karcie cache (dopisywana przez
 `textContent`, nie `innerHTML`) i wysyłana jako `timer_sn` przy zapisie do bazy;
 `applyCachedLabels()` przenosi ją ze starego cache tak jak etykiety.
@@ -107,8 +152,10 @@ Przy eksporcie do kalkulatora etykiety sesji mają pierwszeństwo nad formularze
 (per pole — `appendCalcDataParams(params, overrides)`; puste pole etykiety = fallback do formularza).
 
 **Auto-zapis sesji live:** po `SESSION_STOPPED` (`saveLiveSessionToCache()` w `handleSessionStopped`)
-sesja trafia do cache z etykietami, ale **tylko gdy oba pola** (tor i uczestnik) w "Dane do kalkulatora"
-są wypełnione i sesja ma strzały. Duplikaty po `sessId` są nadpisywane, lista sortowana od najnowszej,
+sesja trafia do cache z etykietami. Warunek: sesja ma strzały **i** albo oba pola (tor i uczestnik)
+w "Dane do kalkulatora" są wypełnione, albo sesji nadano **kod tymczasowy** — wtedy zapis jest
+bezwarunkowy, bo kod na nagraniu bez listy strzałów, na którą wskazuje, jest bezwartościowy
+(patrz „Kody tymczasowe"). Duplikaty po `sessId` są nadpisywane, lista sortowana od najnowszej,
 status pokazuje "· zapisano w cache". Ponowne "Pobierz sesje do cache" nie kasuje etykiet —
 `applyCachedLabels()` przenosi je ze starego cache po `sessId` przed zapisem.
 `cache.savedAt` = czas ostatniego zapisu (download lub auto-zapis), w UI jako "Zapisano:".
@@ -145,6 +192,16 @@ odkłada `dbId`/`dbEditToken` do cache (`markCachedSessionSaved()` przez callbac
 edycji, nie blokując ponownego zapisu. `applyCachedLabels()` i `saveLiveSessionToCache()` przenoszą
 `dbId`/`dbEditToken` przy nadpisywaniu wpisu; "Wyczyść cache" pyta o potwierdzenie, gdy są tokeny.
 
+**Eksport i import cache do pliku JSON:** przyciski "Eksportuj do pliku" (`exportCacheToFile()`)
+i "Wczytaj z pliku" (`importCacheFromFile(file)`, ukryty `input[type=file]`) w karcie cache.
+Powód: `localStorage` to jedna przeglądarka na jednym tablecie — wyczyszczone dane witryny
+zabrałyby cały dzień zawodów. Eksport zrzuca cały obiekt cache (`sgtimer-cache-RRRR-MM-DD.json`).
+Import **SCALA po `sessId`, nigdy nie zastępuje** (plik może pochodzić z innego tabletu):
+nowe sesje są dopisywane, a w istniejących uzupełniane są tylko **puste** pola
+(`nazwaToru`, `uczestnik`, `timerSn`, `tempId`, `dbEditToken`, liczbowe `startDelay`/`parTime`/
+`parShots`, `dbId` i pusta lista strzałów) — lokalna poprawka i lokalne `dbId` mają pierwszeństwo.
+Po scaleniu lista sortowana od najnowszej, komunikat "nowych sesji N, scalonych M".
+
 ## Integracja z kalkulatorem PiRO
 
 Przyciski "Wyslij do kalkulatora" otwieraja `https://piro-kalkulator.pifpaf.fun/` z parametrami GET:
@@ -155,7 +212,10 @@ uczestnik nie jest pamietany.
 
 Przyciski "Zapisz w bazie" wysyłają POST na `https://piro-kalkulator.pifpaf.fun/api_save.php`
 z JSON `{liczba_strzalow, czas_bazowy, opis, nazwa_toru?, uczestnik?, timer_sn?, sess_id?,
-par_time_limit?, par_shot_limit?}` i wyświetlają zwrócone ID wpisu.
+temp_id?, par_time_limit?, par_shot_limit?}` i wyświetlają zwrócone ID wpisu.
+Błąd sieci rozróżnia przyczynę: `navigator.onLine === false` → "Brak internetu — sesja czeka
+w cache" (na strzelnicy to stan normalny, nie awaria; sesja pójdzie przyciskiem
+"Wyślij zaległe do bazy"), w przeciwnym razie "Błąd połączenia"; obie ścieżki odświeżają baner.
 Kary i punktacja są zerowe (tylko czas i liczba strzałów). Funkcje: `saveToDatabase()` (live),
 `saveHistoryToDatabase()` (historia), wspólna logika w `buildSavePayload()` i `postToDatabase()`.
 `timer_sn` = numer seryjny timera (nazwa urządzenia BLE, zmienna `deviceSerial` ustawiana przy
@@ -176,41 +236,98 @@ głównego klucza edycji kalkulatora. Link działa tylko dla danego wpisu; token
 
 **Sygnał tonowy ID (dla Piro Overlay):** po sukcesie `postToDatabase()` woła
 `addIdToneReplayButton()` (dokłada przycisk "🔊 Zagraj sygnał ID" do statusu zapisu) i — gdy
-checkbox "Zagraj sygnał ID po zapisie" w karcie "Dane do kalkulatora" jest zaznaczony
-(`inputPlayIdTone`, zapamiętywany w `localStorage` pod `sgtimer_play_id_tone`, domyślnie
-WYŁĄCZONY) — od razu odtwarza `playIdTone(data.id)`. Cel: aplikacja Piro Overlay
-(github.com/enclude/congenial-octo-memory — nakładka na wideo ze strzelania) może
-zdekodować ID sesji prosto z mikrofonu kamery, bez ręcznego wpisywania.
+checkbox "Zapisz w bazie i zagraj sygnał ID po zakończeniu sesji (wymaga internetu)"
+w karcie "Dane do kalkulatora" jest zaznaczony (`inputPlayIdTone`, zapamiętywany
+w `localStorage` pod `sgtimer_play_id_tone`, domyślnie WYŁĄCZONY) — od razu odtwarza
+`playIdTone(data.id)` (kanał 0 protokołu, patrz „Kody tymczasowe i sygnał tonowy (protokół v3)").
+Cel: aplikacja Piro Overlay (github.com/enclude/congenial-octo-memory — nakładka na wideo
+ze strzelania) może zdekodować ID sesji prosto z mikrofonu kamery, bez ręcznego wpisywania.
 
-**Auto-zapis do bazy przy koncu sesji live:** gdy checkbox "Zagraj sygnał ID po zapisie" jest
-zaznaczony, `handleSessionStopped` (po `SESSION_STOPPED`, gdy sa strzały) sam woła
-`saveToDatabase()` — bez klikania "Zapisz w bazie". Zapis do bazy sam odtwarza ton (patrz
-wyżej), więc zaznaczenie tego checkboxa włącza od razu obie rzeczy: zapis i sygnał, skracając
-obsługę stanowiska. Odznaczony checkbox = bez zmian, zapis tylko ręcznym przyciskiem.
+**Auto-zapis do bazy przy koncu sesji live:** gdy powyższy checkbox jest zaznaczony,
+`handleSessionStopped` (po `SESSION_STOPPED`, gdy sa strzały) sam woła `saveToDatabase()` —
+bez klikania "Zapisz w bazie". Zapis do bazy sam odtwarza ton (patrz wyżej), więc zaznaczenie
+tego checkboxa włącza od razu obie rzeczy: zapis i sygnał, skracając obsługę stanowiska.
+Odznaczony checkbox = bez zmian, zapis tylko ręcznym przyciskiem. Ta ścieżka **wymaga
+internetu** — bez niego identyfikatorem na nagraniu jest kod tymczasowy (niżej).
 
-Protokół v2 (`playIdTone`, Web Audio, sinus przez `AudioContext`+`OscillatorNode`): marker
-5000 Hz ("tu zaczyna się kod") + 4 tony cyfr + ton cyfry kontrolnej (`idToneChecksum` =
-suma ważona pozycją 1–4 mod 10), każdy jeden z 10 tonów 5200–7000 Hz (co 200 Hz na cyfrę
-0–9), 300 ms ton + 50 ms cisza, cała sekwencja powtórzona 2× (odstęp 300 ms) dla
-odporności na zakłócenia. Pasmo wybrane tak, by NIE kolidować z bzyczkiem shot-timera
-(2000–4500 Hz) i zmieścić się pod Nyquistem ekstrakcji audio Piro Overlay (16 kHz →
-8000 Hz). Zmiany v2 względem v1 (5250–7500 Hz co 250 Hz, 200 ms, bez checksumy; BEZ
-kompatybilności wstecznej) wynikają z pomiaru realnego nagrania DJI z odległym telefonem:
-tony >7 kHz zanikały w łańcuchu głośnik → mikrofon → AAC (stąd niższy sufit pasma),
-dłuższy ton przeżywa zjadanie ogona przez AAC, a cyfra kontrolna pozwala dekoderowi
-odrzucić błędny odczyt zamiast pobrać cudzą sesję.
-ID > 9999 (poza zasięgiem 4 cyfr protokołu) NIE jest odtwarzane — `playIdTone` woli nic nie
-zagrać niż zagrać ucięte (błędne) ID, które druga strona zdekodowałaby jako pozornie
-prawidłowe. **DEKODER (osobne repo, `audio_sync.decode_id_tone` w piro-overlay) MUSI
-używać identycznych częstotliwości/czasów** — zmiana stałych `ID_TONE_*` tutaj wymaga
-zmiany odpowiadających `_ID_TONE_*` tam.
+## Kody tymczasowe i sygnał tonowy (protokół v3)
+
+Problem: sygnał ID wymaga wpisu w bazie, czyli internetu — a na stanowisku go nie ma, więc
+nagranie zostawało bez żadnego identyfikatora (ID wpisu bywa dostępne dopiero wieczorem).
+Rozwiązanie: **kod tymczasowy** nadawany i grany LOKALNIE w chwili zakończenia sesji.
+
+**Kod tymczasowy**
+- Format drutowy: 5 cyfr, np. `"30147"` = cyfra stanowiska + 4-cyfrowy licznik; wyświetlany
+  jako `3-0147` (`formatTempId()`). Na drut, do payloadu i do bazy idą **gołe cyfry**.
+- `nextTempId()` — licznik trzymany w `localStorage` (`sgtimer_temp_counter`, `% 10000`),
+  inkrementowany i zapisywany przed użyciem: przeładowanie strony ani crash nie wydadzą
+  drugi raz kodu wcześniejszej sesji.
+- **Nr stanowiska = kanał ID-tone**: pole `inputStation` (select 1–9) w karcie "Dane do
+  kalkulatora", pamiętane w `sgtimer_station`, `getStation()` pilnuje zakresu.
+  **0 jest zarezerwowane** dla ID wpisu w bazie, dlatego stanowiska idą od 1 — każde
+  stanowisko ma własną przestrzeń kodów i kody się nie zderzają.
+- Checkbox "Zagraj kod tymczasowy po zakończeniu sesji (działa bez internetu)"
+  (`inputPlayTempTone`, `sgtimer_play_temp_tone`, **domyślnie WŁĄCZONY** — na strzelnicy kod
+  tymczasowy to jedyny identyfikator gwarantowany w chwili końca sesji).
+- `handleSessionStopped`: gdy checkbox zaznaczony i sesja ma strzały → `nextTempId()` →
+  `currentSession.tempId`, kod dopisany do statusu sesji, pokazany w `#liveTempCode`
+  z przyciskiem powtórki (`addTempToneReplayButton()`) i **od razu odtworzony**
+  (`playTempIdTone()`). Sesja z kodem trafia do cache bezwarunkowo (patrz „Cache sesji").
+- `tempId` żyje w cache, jest przenoszony przez `applyCachedLabels()` i przy nadpisywaniu
+  wpisu w `saveLiveSessionToCache()`, pokazywany plakietką "kod 3-0147"
+  (`.cache-temp-badge`, obrys — żeby nie mylił się z plakietką "w bazie #ID") w karcie cache
+  oraz w `renderShots()` dla sesji z historii/cache.
+- Do bazy idzie jako `temp_id` w `buildSavePayload()` — walidacja `/^[1-9]\d{4}$/`
+  (kanał 0 to nie jest kod tymczasowy), zawsze w formie 5 cyfr, nigdy `3-0147`.
+  Kalkulator zapisuje go w kolumnie `temp_id` i wystawia `api.php?temp_id=`, po czym
+  Piro Overlay odnajduje po nim wpis (ID z bazy w ogóle nie musi trafić na nagranie).
+
+**Protokół v3** (`playIdToneFrame()`, Web Audio, sinus przez `AudioContext`+`OscillatorNode`).
+Ramka: marker 5000 Hz ("tu zaczyna się kod") + **cyfra KANAŁU** + 4 cyfry wartości + cyfra
+kontrolna (`idToneChecksum` = suma ważona pozycją **1..5** po wszystkich pięciu cyfrach,
+mod 10); każda cyfra to jeden z 10 tonów 5200–7000 Hz (co 200 Hz na cyfrę 0–9), 300 ms ton
++ 50 ms cisza, cała ramka powtórzona 2× (odstęp 300 ms) dla odporności na zakłócenia.
+- **kanał 0** — wartość = ID wpisu w bazie kalkulatora (`playIdTone()`, wymaga internetu),
+- **kanał 1–9** — kanał = numer stanowiska, wartość = lokalny kod tymczasowy
+  (`playTempIdTone()`, przyjmuje `"30147"` i `"3-0147"`).
+
+Tony idą przez kolejkę `toneChain` / `queueIdToneFrame()` i **nigdy się nie nakładają**:
+przy auto-zapisie ton ID wystartowałby w środku kodu tymczasowego i oba zdekodowałyby się
+jako śmieci. `playIdToneFrame()` zwraca długość ramki w sekundach (0 = nic nie zagrano),
+kolejka czeka tę długość + 150 ms.
+
+Pasmo wybrane tak, by NIE kolidować z bzyczkiem shot-timera (2000–4500 Hz) i zmieścić się
+pod Nyquistem ekstrakcji audio Piro Overlay (16 kHz → 8000 Hz). Pasmo i czasy wynikają
+z pomiaru realnego nagrania DJI z odległym telefonem: tony >7 kHz zanikały w łańcuchu
+głośnik → mikrofon → AAC, dłuższy ton przeżywa zjadanie ogona przez AAC, a cyfra kontrolna
+pozwala dekoderowi odrzucić błędny odczyt zamiast pobrać cudzą sesję.
+
+**v3 dodał cyfrę kanału i NIE jest kompatybilny z v2** (marker + 4 cyfry + checksuma
+z wagami 1–4; v2 też nie był kompatybilny z v1) — zmiana idzie jednocześnie we wszystkich
+trzech repozytoriach. Wartość > 9999 (`ID_TONE_MAX_VALUE`) albo kanał spoza 0–9 NIE są
+odtwarzane — lepiej nie zagrać nic niż zagrać uciętą, pozornie prawidłową wartość, którą
+druga strona zdekoduje jako cudzą sesję. **DEKODER (osobne repo,
+`piro_overlay.audio_sync.decode_id_tone` / `_id_tone_checksum`) ORAZ `id_tone.js`
+w kalkulatorze MUSZĄ używać identycznych częstotliwości, czasów, kolejności cyfr i wag
+checksumy** — zmiana stałych `ID_TONE_*` tutaj wymaga zmiany odpowiadających `_ID_TONE_*`
+tam (inaczej repozytoria rozjadą się po cichu na stałych).
+
+## Praca z subagentami (obowiązkowe)
+
+Każde zadanie, które dotyka więcej niż jednego pliku albo wymaga przeszukania repozytorium, prowadź przez subagentów (narzędzie Task/Agent), zamiast czytać wszystko w głównym kontekście:
+- **Rozpoznanie** („gdzie jest X", „które pliki dotyczą Y") → subagent typu Explore; główny kontekst dostaje wniosek, nie zrzuty plików.
+- **Zmiany w kilku niezależnych obszarach** (albo w kilku repozytoriach naraz: timer / kalkulator / Piro Overlay) → po jednym subagencie na obszar, uruchamiane równolegle w jednej wiadomości.
+- **Wspólne protokoły** (np. ID-tone) → najpierw spisz specyfikację i przekaż ją KAŻDEMU subagentowi dosłownie; inaczej repozytoria rozjadą się na stałych.
+- Subagent NIE commituje i NIE aktualizuje dokumentacji — commit, push i dokumentację robi sesja główna po zebraniu raportów.
+
+Wyjątek: pojedyncza, znana zmiana w jednym pliku — rób ją bez subagenta.
 
 ## Konwencje
 
 - Język interfejsu: **polski**
 - Komunikaty i komentarze w kodzie: po angielsku
 - Nie używać zewnętrznych bibliotek — aplikacja działa w całości bez zależności
-- Favicon: inline SVG data URI w `<head>`
+- Favicon: inline SVG data URI w `<head>`; ikony PWA to osobne PNG-i w `icons/` (manifest nie przyjmuje data URI tak dobrze jak plików, a instalacja wymaga 192 i 512 + maskable)
 - Brak systemu buildów, brak package.json
 
 ## Wymagania przeglądarki
